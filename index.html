@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>AgroBank Protocol — Dashboard</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@600;700&family=Instrument+Sans:wght@400;500;600&display=swap">
+<script src="https://cdn.tailwindcss.com/3.4.17"></script>
+<script src="https://cdn.jsdelivr.net/npm/react@18.3.1/umd/react.production.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/react-dom@18.3.1/umd/react-dom.production.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/htm@3.1.1/dist/htm.umd.js"></script>
+<style>
+:root{--bg:#EDF0EA;--card:#FBFCFA;--ink:#14211A;--mute:#5C6B61;--line:#D3DBD2;--green:#2F6B3F;--greenbg:#DCEBDD;--gold:#B7861F;--goldbg:#F4E7C4;--bad:#B3402F;--badbg:#F6DAD4;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0E1611;--card:#162019;--ink:#E7EEE8;--mute:#93A398;--line:#27352B;--green:#6FBF82;--greenbg:#1B3524;--gold:#E0B34A;--goldbg:#3A3015;--bad:#E58572;--badbg:#3E1F19}}
+:root[data-theme="dark"]{--bg:#0E1611;--card:#162019;--ink:#E7EEE8;--mute:#93A398;--line:#27352B;--green:#6FBF82;--greenbg:#1B3524;--gold:#E0B34A;--goldbg:#3A3015;--bad:#E58572;--badbg:#3E1F19}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+body{background:var(--bg);color:var(--ink);font-family:'Instrument Sans',system-ui,sans-serif;margin:0}
+h1,h2,h3,.disp{font-family:'Bricolage Grotesque','Instrument Sans',system-ui,sans-serif;letter-spacing:-.02em}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px}
+.inp{width:100%;background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:.65rem .8rem;color:var(--ink);font-size:1rem}
+.inp:focus-visible,.btn:focus-visible,.tab:focus-visible{outline:2px solid var(--green);outline-offset:2px}
+.btn{background:var(--green);color:var(--bg);border-radius:10px;padding:.7rem 1.1rem;font-weight:600;border:0;cursor:pointer}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+.btn2{background:transparent;color:var(--ink);border:1px solid var(--line)}
+.tab{padding:.55rem 1rem;border-radius:999px;font-weight:600;border:1px solid transparent;cursor:pointer;background:transparent;color:var(--mute)}
+.tab[aria-selected=true]{background:var(--ink);color:var(--bg)}
+.mute{color:var(--mute)}.mono{font-variant-numeric:tabular-nums}
+@keyframes pulse{50%{opacity:.35}}.dot{animation:pulse 1.6s infinite}
+@media (prefers-reduced-motion:reduce){.dot{animation:none}}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script>
+const { useState, useEffect, useMemo } = React;
+const html = htm.bind(React.createElement);
+const fmt = (n, d = 0) => new Intl.NumberFormat('es-AR', { minimumFractionDigits: d, maximumFractionDigits: d }).format(n);
+const usd = (n, d = 0) => 'USDC ' + fmt(n, d);
+const P_BASE = 380, P_MIN = 250, MIN_RATIO = 1.3, APR_INV = 0.12, APR_PROD = 0.18, LEDGER = 1204500, DAY = 17280;
+// espejo de meets_collateral_ratio(): aritmética entera, sin flotantes
+const meetsRatio = (value, principal) =>
+  BigInt(Math.round(value * 1e7)) * 10000n >= BigInt(Math.round(principal * 1e7)) * 13000n;
+const isExpired = l => LEDGER > l.expiry;              // contrato: sequence > expiry_ledger
+const seedHash = n => Array.from({ length: 64 }, (_, i) => '0123456789abcdef'[(i * 7 + n * 13 + i * i) % 16]).join('');
+const SEED = [
+  { id: 0, farmer: 'GA4K…R7LM', principal: 50000, tn: 250, hash: seedHash(1), expiry: LEDGER + DAY * 120, status: 'Active', mine: false },
+  { id: 1, farmer: 'GCQ2…9XTD', principal: 45000, tn: 160, hash: seedHash(2), expiry: LEDGER + DAY * 75, status: 'Active', mine: false },
+  { id: 2, farmer: 'GDM6…W3EH', principal: 26500, tn: 100, hash: seedHash(3), expiry: LEDGER + DAY * 200, status: 'Active', mine: false },
+];
+// 'Liquidable' es un estado derivado de la UI (no existe en LoanStatus). No usar el nombre del error del contrato.
+const loanStatus = (l, price) => l.status !== 'Active' ? l.status
+  : (isExpired(l) || !meetsRatio(l.tn * price, l.principal) ? 'Liquidable' : 'Active');
+function Badge({ status }) {
+  const m = { Active: ['var(--greenbg)', 'var(--green)'], Liquidable: ['var(--badbg)', 'var(--bad)'], Repaid: ['var(--goldbg)', 'var(--gold)'], Defaulted: ['var(--bad)', 'var(--bg)'] }[status];
+  return html`<span class="px-2 py-0.5 rounded-full text-xs font-semibold whitespace-nowrap" style=${{ background: m[0], color: m[1] }}>${status}</span>`;
+}
+const randHex = () => Array.from(crypto.getRandomValues(new Uint8Array(32)), b => b.toString(16).padStart(2, '0')).join('');
+const fakeTx = () => randHex().slice(0, 10) + '…' + randHex().slice(0, 6);
+
+function Chart({ deposit, rate }) {
+  const pts = Array.from({ length: 13 }, (_, m) => deposit * rate * m / 12);
+  const max = Math.max(pts[12], 1), W = 560, H = 190, p = 28;
+  const xy = (v, i) => [p + i * (W - 2 * p) / 12, H - p - (v / max) * (H - 2 * p)];
+  const line = pts.map((v, i) => xy(v, i).join(',')).join(' ');
+  const area = `${p},${H - p} ${line} ${W - p},${H - p}`;
+  return html`<div style=${{ overflowX: 'auto' }}><svg viewBox="0 0 ${W} ${H}" style=${{ minWidth: 420, width: '100%' }} role="img" aria-label="Ganancias acumuladas proyectadas a 12 meses">
+    ${[0, .5, 1].map(f => html`<g key=${f}><line x1=${p} x2=${W - p} y1=${H - p - f * (H - 2 * p)} y2=${H - p - f * (H - 2 * p)} stroke="var(--line)"/><text x=${p} y=${H - p - f * (H - 2 * p) - 4} fontSize="10" fill="var(--mute)">${fmt(max * f)}</text></g>`)}
+    <polygon points=${area} fill="var(--green)" opacity=".15"/>
+    <polyline points=${line} fill="none" stroke="var(--green)" strokeWidth="2.5" strokeLinejoin="round"/>
+    ${pts.map((v, i) => i % 3 === 0 && html`<g key=${i}><circle cx=${xy(v, i)[0]} cy=${xy(v, i)[1]} r="3.5" fill="var(--green)"/><text x=${xy(v, i)[0]} y=${H - 8} fontSize="10" textAnchor="middle" fill="var(--mute)">mes ${i}</text></g>`)}
+  </svg></div>`;
+}
+
+function Stat({ label, value, sub }) {
+  return html`<div class="card p-4"><div class="mute text-sm">${label}</div><div class="disp text-2xl font-bold mono mt-1">${value}</div>${sub && html`<div class="mute text-xs mt-1">${sub}</div>`}</div>`;
+}
+
+function Investor({ s, tx }) {
+  const [amt, setAmt] = useState('1000');
+  const a = parseFloat(amt) || 0;
+  const util = s.pool.lent / s.pool.shares;
+  const ok = a > 0 && a <= s.wallet;
+  const earned = s.pos * APR_INV * util / 12 * s.months;
+  return html`<div class="grid gap-4 lg:grid-cols-5">
+    <div class="grid gap-4 lg:col-span-5 sm:grid-cols-2 lg:grid-cols-4">
+      <${Stat} label="Pool de staking" value=${usd(s.pool.shares)} sub="TotalShares"/>
+      <${Stat} label="Prestado a productores" value=${usd(s.pool.lent)} sub=${`Utilización ${fmt(util * 100, 1)}%`}/>
+      <${Stat} label="Rendimiento efectivo" value=${fmt(APR_INV * util * 100, 2) + '%'} sub=${`12% TNA × utilización ${fmt(util * 100, 1)}%`}/>
+      <${Stat} label="Tu posición" value=${usd(s.pos)} sub=${`Devengado: ${usd(earned, 2)}`}/>
+    </div>
+    <div class="card p-5 lg:col-span-2">
+      <h2 class="text-xl font-semibold">Depositar liquidez</h2>
+      <p class="mute text-sm mt-1">Saldo en billetera: <b class="mono">${usd(s.wallet)}</b></p>
+      <label class="block mt-4 text-sm font-medium" for="dep">Monto a depositar</label>
+      <input id="dep" class="inp mono mt-1" inputMode="decimal" value=${amt} onChange=${e => setAmt(e.target.value)} onInput=${e => setAmt(e.target.value)}/>
+      <div class="flex gap-2 mt-2">${[500, 1000, 5000].map(v => html`<button key=${v} class="btn btn2 text-sm" style=${{ padding: '.3rem .7rem' }} onClick=${() => setAmt(String(v))}>${fmt(v)}</button>`)}</div>
+      ${a > s.wallet && html`<p class="text-sm mt-3" style=${{ color: 'var(--bad)' }}>El monto supera tu saldo de USDC.</p>`}
+      <div class="mt-4 text-sm mute">Ganarías ≈ <b style=${{ color: 'var(--green)' }} class="mono">${usd(a * APR_INV * util, 2)}</b> en 12 meses.</div>
+      <button class="btn w-full mt-4" disabled=${!ok || s.busy} onClick=${() => tx('deposit_liquidity', () => s.deposit(a))}>${s.busy ? 'Procesando…' : 'Depositar USDC'}</button>
+      <button class="btn btn2 w-full mt-2" disabled=${s.pos <= 0 || s.busy} onClick=${() => tx('claim_yield', () => s.claim())}>Cobrar rendimiento (${usd(earned, 2)})</button>
+      <p class="mute text-xs mt-3">Llama a <code>deposit_liquidity(investor, amount)</code>. El rendimiento proviene solo de intereses repagados.</p>
+    </div>
+    <div class="card p-5 lg:col-span-3">
+      <div class="flex items-baseline justify-between flex-wrap gap-2"><h2 class="text-xl font-semibold">Ganancias acumuladas (proyección)</h2>
+        <div class="flex items-center gap-2 text-sm mute"><label for="mo">Meses simulados</label><input id="mo" type="range" min="0" max="12" value=${s.months} onInput=${e => s.setMonths(+e.target.value)}/><b class="mono">${s.months}</b></div></div>
+      <${Chart} deposit=${s.pos} rate=${APR_INV * util}/>
+      <p class="mute text-sm">A 12 meses: <b class="mono" style=${{ color: 'var(--green)' }}>${usd(s.pos * APR_INV * util, 2)}</b> sobre ${usd(s.pos)}.</p>
+    </div>
+  </div>`;
+}
+
+function Producer({ s, tx }) {
+  const [tn, setTn] = useState('500');
+  const [pr, setPr] = useState('120000');
+  const [hash, setHash] = useState('');
+  const [days, setDays] = useState('180');
+  const t = parseFloat(tn) || 0, p = parseFloat(pr) || 0;
+  const value = t * s.price;
+  const ratio = p > 0 ? value / p : 0;
+  const ltv = value > 0 ? p / value : 0;
+  const maxLoan = value / MIN_RATIO;
+  const free = s.pool.shares - s.pool.lent;
+  const hashOk = /^[0-9a-fA-F]{64}$/.test(hash.trim());
+  const ratioOk = meetsRatio(value, p);
+  const h = hash.trim().toLowerCase();
+  const tInt = Number.isInteger(t) && t > 0, dOk = /^\d+$/.test(days) && parseInt(days) > 0;
+  const liqOk = p <= free;
+  // mismo orden en que el contrato los lanza
+  const errs = [
+    !(t > 0 && p > 0) && 'InvalidAmount (#2): principal y toneladas deben ser > 0.',
+    t > 0 && !tInt && 'collateral_tonnes es i128: ingresá toneladas enteras.',
+    !dOk && 'InvalidExpiry (#4): el plazo debe ser ≥ 1 día (expiry_ledger > ledger actual).',
+    !hashOk && 'e_warrant_hash es BytesN<32>: 64 caracteres hexadecimales (SHA-256).',
+    hashOk && s.warrants.has(h) && 'WarrantAlreadyPledged (#8): este eWarrant ya está pignorado.',
+    p > 0 && !liqOk && `InsufficientLiquidity (#9): el pool tiene ${usd(free)} disponibles.`,
+    t > 0 && p > 0 && !ratioOk && `Undercollateralized (#10): cobertura ${fmt(ratio * 100, 1)}%, el mínimo es 130%.`,
+  ].filter(Boolean);
+  const ok = errs.length === 0;
+  const interest = p * APR_PROD, inv = p * APR_INV, spread = interest - inv;
+  const gaugePct = Math.min(ltv / 1, 1) * 100, limitPct = (1 / MIN_RATIO) * 100;
+  const level = ltv === 0 ? 'var(--mute)' : ratioOk ? 'var(--green)' : 'var(--bad)';
+  return html`<div class="grid gap-4 lg:grid-cols-5">
+    <div class="card p-5 lg:col-span-3">
+      <div class="flex items-center justify-between flex-wrap gap-2"><h2 class="text-xl font-semibold">Solicitar crédito contra eWarrant</h2>
+        <span class="text-sm px-3 py-1 rounded-full flex items-center gap-2" style=${{ background: 'var(--goldbg)', color: 'var(--gold)' }}><span class="dot" style=${{ width: 8, height: 8, borderRadius: 9, background: 'var(--gold)' }}></span>Pyth · Soja USD ${s.price}/t</span></div>
+      <div class="grid sm:grid-cols-2 gap-4 mt-4">
+        <div><label class="text-sm font-medium" for="tn">Toneladas de soja</label><input id="tn" class="inp mono mt-1" inputMode="decimal" value=${tn} onInput=${e => setTn(e.target.value)}/></div>
+        <div><label class="text-sm font-medium" for="pr">Monto a solicitar (USDC)</label><input id="pr" class="inp mono mt-1" inputMode="decimal" value=${pr} onInput=${e => setPr(e.target.value)}/></div>
+        <div class="sm:col-span-2"><label class="text-sm font-medium" for="hs">Hash SHA-256 del eWarrant [Decreto 640/2024]</label>
+          <div class="flex gap-2 mt-1"><input id="hs" class="inp mono" style=${{ fontSize: '.8rem' }} placeholder="64 caracteres hexadecimales" value=${hash} onInput=${e => setHash(e.target.value)}/><button class="btn btn2 text-sm" style=${{ whiteSpace: 'nowrap' }} onClick=${() => setHash(randHex())}>Hash de prueba</button></div></div>
+        <div><label class="text-sm font-medium" for="dy">Plazo hasta vencimiento (días)</label><input id="dy" class="inp mono mt-1" inputMode="numeric" value=${days} onInput=${e => setDays(e.target.value)}/><p class="mute text-xs mt-1">Se convierte en <code>expiry_ledger</code> (≈ 17.280 ledgers/día).</p></div>
+      </div>
+      <div class="mt-6">
+        <div class="flex justify-between text-sm"><span class="font-medium">LTV (préstamo / valor del colateral)</span><b class="mono" style=${{ color: level }}>${fmt(ltv * 100, 1)}% · máx. ${fmt(limitPct, 1)}%</b></div>
+        <div style=${{ position: 'relative', height: 22, marginTop: 8, borderRadius: 8, background: 'var(--bg)', border: '1px solid var(--line)', overflow: 'hidden' }}>
+          <div style=${{ width: gaugePct + '%', height: '100%', background: level, transition: 'width .3s' }}></div>
+          <div style=${{ position: 'absolute', left: limitPct + '%', top: 0, bottom: 0, width: 2, background: 'var(--ink)' }}></div></div>
+        <div class="flex justify-between mute text-xs mt-1"><span>0%</span><span>Límite 130% de cobertura</span><span>100%</span></div>
+      </div>
+      ${errs.length > 0 && html`<ul class="mt-4 text-sm grid gap-1" style=${{ color: 'var(--bad)' }}>${errs.map(e => html`<li key=${e}>• ${e}</li>`)}</ul>`}
+      <button class="btn w-full mt-5" disabled=${!ok || s.busy} onClick=${() => tx('request_loan', () => s.borrow({ tn: t, principal: p, hash: h, days: parseInt(days) }))}>${s.busy ? 'Procesando…' : 'Solicitar crédito'}</button>
+      <p class="mute text-xs mt-2">Llama a <code>request_loan</code> (requiere firma del productor y del admin; el prototipo simula ambas).</p>
+    </div>
+    <div class="grid gap-4 lg:col-span-2 content-start">
+      <div class="card p-5"><h3 class="text-lg font-semibold">Valuación del colateral</h3>
+        <dl class="grid grid-cols-2 gap-y-2 text-sm mt-3 mono">
+          <dt class="mute">Precio Pyth</dt><dd class="text-right">USD ${s.price}/t</dd>
+          <dt class="mute">Toneladas</dt><dd class="text-right">${fmt(t)} t</dd>
+          <dt class="mute">Valor del colateral</dt><dd class="text-right font-bold">${usd(value)}</dd>
+          <dt class="mute">Cobertura</dt><dd class="text-right font-bold" style=${{ color: level }}>${fmt(ratio * 100, 1)}%</dd>
+          <dt class="mute">Máximo prestable</dt><dd class="text-right">${usd(maxLoan)}</dd>
+          <dt class="mute">Liquidez del pool</dt><dd class="text-right">${usd(free)}</dd></dl></div>
+      <div class="card p-5"><h3 class="text-lg font-semibold">Repago: split atómico</h3>
+        <p class="mute text-sm mt-1">Al llamar <code>repay_loan</code>, en una transacción:</p>
+        <dl class="grid grid-cols-2 gap-y-2 text-sm mt-3 mono">
+          <dt class="mute">Capital + 12% → pool</dt><dd class="text-right">${usd(p + inv)}</dd>
+          <dt class="mute">Spread 6% → tesorería</dt><dd class="text-right">${usd(spread)}</dd>
+          <dt class="mute font-semibold">Total a pagar (18%)</dt><dd class="text-right font-bold">${usd(p + interest)}</dd></dl></div>
+      ${s.loans.some(l => l.mine) && html`<div class="card p-5"><h3 class="text-lg font-semibold">Tus créditos</h3><ul class="mt-2 grid gap-3">${s.loans.filter(l => l.mine).map(l => html`<li key=${l.id} class="text-sm"><div class="flex justify-between"><b>Préstamo #${l.id}</b><${Badge} status=${loanStatus(l, s.price)}/></div><div class="mute mono">${usd(l.principal)} · ${fmt(l.tn)} t · ${l.hash.slice(0, 10)}…</div>${l.status === 'Active' && html`<button class="btn btn2 text-sm mt-2" disabled=${s.busy} onClick=${() => tx('repay_loan', () => s.repay(l.id))}>Repagar ${usd(l.principal * (1 + APR_PROD))}</button>`}</li>`)}</ul></div>`}
+    </div>
+  </div>`;
+}
+
+function Keeper({ s }) {
+  const risky = s.loans.filter(l => loanStatus(l, s.price) === 'Liquidable').length;
+  const drop = (s.price / P_BASE - 1) * 100;
+  const steps = ['Simular transacción', 'Firmar payload ECDSA de Pyth', 'Confirmar en red'];
+  return html`<div class="grid gap-4">
+    <div class="grid gap-4 sm:grid-cols-3">
+      <${Stat} label="Precio Pyth (soja)" value=${`USD ${s.price}/t`} sub=${drop === 0 ? 'Sin variación' : `${fmt(drop, 1)}% vs. USD ${P_BASE}`}/>
+      <${Stat} label="Créditos en riesgo" value=${`${risky} de ${s.loans.filter(l => l.status === 'Active').length}`} sub="Bajo 130% de cobertura"/>
+      <${Stat} label="Ledger actual" value=${fmt(LEDGER)} sub="Referencia para expiry_ledger"/>
+    </div>
+    <div class="card p-5">
+      <div class="flex items-baseline justify-between flex-wrap gap-2"><h2 class="text-xl font-semibold">Simular caída del precio de la soja</h2>
+        <div class="flex gap-2"><button class="btn btn2 text-sm" disabled=${s.busy} onClick=${() => s.setPrice(P_BASE)}>Restablecer USD ${P_BASE}</button><button class="btn text-sm" style=${{ background: 'var(--bad)' }} disabled=${s.busy} onClick=${() => s.setPrice(P_MIN)}>Caer a USD ${P_MIN}</button></div></div>
+      <div class="flex items-center gap-4 mt-4"><span class="mute text-sm mono">USD ${P_MIN}</span>
+        <input aria-label="Precio de la soja en USD por tonelada" class="flex-1" type="range" min=${P_MIN} max=${P_BASE} step="1" value=${s.price} disabled=${s.busy} onInput=${e => s.setPrice(+e.target.value)}/>
+        <span class="mute text-sm mono">USD ${P_BASE}</span><b class="disp text-2xl mono" style=${{ color: drop < 0 ? 'var(--bad)' : 'var(--ink)' }}>${s.price}</b></div>
+      <p class="mute text-xs mt-2">Reemplaza el precio verificado de Pyth que recibiría <code>liquidate_collateral(loan_id, price_update)</code>. El mismo precio se usa en la vista del Productor.</p>
+    </div>
+    ${s.liq && html`<div class="card p-5" role="status"><h3 class="text-lg font-semibold">Liquidando préstamo #${s.liq.id}</h3>
+      <ol class="grid gap-2 mt-3 text-sm">${steps.map((t, i) => html`<li key=${t} class="flex items-center gap-3" style=${{ color: i <= s.liq.stage ? 'var(--ink)' : 'var(--mute)' }}>
+        <span class=${i === s.liq.stage ? 'dot' : ''} style=${{ width: 22, height: 22, borderRadius: 99, display: 'grid', placeItems: 'center', fontSize: 12, fontWeight: 700, background: i < s.liq.stage ? 'var(--green)' : i === s.liq.stage ? 'var(--gold)' : 'var(--line)', color: 'var(--bg)' }}>${i < s.liq.stage ? '✓' : i + 1}</span>
+        <span class="font-medium">${t}</span>
+        ${i === 1 && s.liq.stage >= 1 && html`<code class="mono text-xs mute" style=${{ wordBreak: 'break-all' }}>price_update = 0x${s.liq.payload.slice(0, 40)}…</code>`}</li>`)}</ol></div>`}
+    <div class="card p-5"><h2 class="text-xl font-semibold">Créditos originados</h2>
+      <div style=${{ overflowX: 'auto' }}><table class="w-full text-sm mt-3" style=${{ minWidth: 820, borderCollapse: 'collapse' }}>
+        <thead><tr class="mute text-left">${['ID', 'Productor', 'Hash eWarrant', 'Colateral', 'Liquida bajo', 'Expira (ledger)', 'Estado', ''].map(h => html`<th key=${h} class="py-2 pr-3 font-medium" style=${{ borderBottom: '1px solid var(--line)' }}>${h}</th>`)}</tr></thead>
+        <tbody>${s.loans.map(l => {
+          const st = loanStatus(l, s.price), ratio = l.tn * s.price / l.principal, bad = st === 'Liquidable';
+          return html`<tr key=${l.id} style=${{ background: bad ? 'var(--badbg)' : 'transparent', borderBottom: '1px solid var(--line)' }}>
+            <td class="py-3 pr-3 px-2 font-semibold">#${l.id}</td>
+            <td class="pr-3 mono">${l.farmer}${l.mine ? ' (vos)' : ''}</td>
+            <td class="pr-3 mono" title=${l.hash}>${l.hash.slice(0, 8)}…${l.hash.slice(-6)}</td>
+            <td class="pr-3 mono"><b style=${{ color: bad ? 'var(--bad)' : l.status === 'Active' ? 'var(--green)' : 'var(--mute)' }}>${fmt(ratio * 100, 1)}%</b><div class="mute text-xs">${fmt(l.tn)} t · ${usd(l.principal)}</div></td>
+            <td class="pr-3 mono">USD ${fmt(l.principal * MIN_RATIO / l.tn, 1)}</td>
+            <td class="pr-3 mono">${fmt(l.expiry)}</td>
+            <td class="pr-3"><${Badge} status=${st}/></td>
+            <td class="pr-2 text-right"><button class="btn text-sm" style=${{ background: 'var(--bad)', whiteSpace: 'nowrap' }} disabled=${!bad || s.busy} onClick=${() => s.liquidate(l.id)}>Ejecutar Liquidación de Pyth</button></td></tr>`; })}</tbody></table></div>
+      <p class="mute text-xs mt-3">La liquidación es permisionless: cualquier keeper puede llamarla. Si el crédito no está bajo 130% ni venció, el contrato responde <code>NotLiquidatable</code>.</p>
+    </div>
+    ${s.events.map(e => html`<div key=${e.id} class="card p-5" style=${{ borderColor: 'var(--bad)' }}>
+      <div class="flex items-center justify-between flex-wrap gap-2"><h3 class="text-lg font-semibold">Evento on-chain: LoanDefaulted</h3><span class="mono text-xs mute">tx ${e.tx}</span></div>
+      <pre class="mono text-xs mt-3 p-3 rounded-lg" style=${{ background: 'var(--bg)', overflowX: 'auto', margin: 0 }}>{ loan_id: ${e.id}, expired: ${String(e.expired)}, collateral_value: ${fmt(e.value * 1e7)} ${e.expired ? '/* vencido: el contrato no consulta Pyth */' : `/* USDC 7 dec. · USD ${fmt(e.value)} a USD ${e.price}/t */`} }</pre>
+      <p class="text-sm mt-3"><b style=${{ color: 'var(--bad)' }}>Estado final: Defaulted.</b> Se libera la ejecución física y legal off-chain del grano en el acopio argentino bajo el Decreto 640/2024. El contrato solo cambia el estado; la ejecución del eWarrant ocurre fuera de la cadena.</p></div>`)}
+  </div>`;
+}
+
+function App() {
+  const [tab, setTab] = useState('inv');
+  const [wallet, setWallet] = useState(25000);
+  const [conn, setConn] = useState(false);
+  const [pool, setPool] = useState({ shares: 184200, lent: 121500 });
+  const [pos, setPos] = useState(5000);
+  const [months, setMonths] = useState(6);
+  const [loans, setLoans] = useState(SEED);
+  const [price, setPrice] = useState(P_BASE);
+  const [liq, setLiq] = useState(null);
+  const [events, setEvents] = useState([]);
+  const [warrants, setWarrants] = useState(new Set(SEED.map(l => l.hash)));
+  const [busy, setBusy] = useState(false);
+  const [toast, setToast] = useState(null);
+  const [theme, setTheme] = useState(null);
+  useEffect(() => { if (theme) document.documentElement.setAttribute('data-theme', theme); }, [theme]);
+
+  const tx = (fn, action) => {
+    if (!conn) { setToast({ k: 'err', m: 'Conectá tu billetera para firmar la transacción.' }); return; }
+    setBusy(true); setToast({ k: 'info', m: `Simulando ${fn}() y esperando firma…` });
+    setTimeout(() => { action(); setBusy(false); setToast({ k: 'ok', m: `${fn}() confirmada · tx ${fakeTx()}` }); }, 1400);
+  };
+  const liquidate = id => {
+    if (!conn) { setToast({ k: 'err', m: 'Conectá tu billetera para firmar la transacción.' }); return; }
+    const l = loans.find(x => x.id === id), expired = isExpired(l),
+      value = expired ? 0 : Math.round(l.tn * price), payload = randHex();
+    setBusy(true); setToast(null); setLiq({ id, stage: 0, payload });
+    setTimeout(() => setLiq({ id, stage: 1, payload }), 1300);
+    setTimeout(() => setLiq({ id, stage: 2, payload }), 2800);
+    setTimeout(() => {
+      setLoans(ls => ls.map(x => x.id === id ? { ...x, status: 'Defaulted' } : x));
+      setEvents(e => [{ id, value, price, expired, tx: fakeTx() }, ...e]);
+      setLiq(null); setBusy(false);
+      setToast({ k: 'ok', m: `liquidate_collateral() confirmada · préstamo #${id} → Defaulted` });
+    }, 4300);
+  };
+  const s = {
+    price, setPrice, liq, events, liquidate,
+    wallet, pool, pos, months, setMonths, loans, warrants, busy,
+    deposit: a => { setWallet(w => w - a); setPool(p => ({ ...p, shares: p.shares + a })); setPos(x => x + a); },
+    claim: () => { const e = pos * APR_INV * (pool.lent / pool.shares) / 12 * months; setWallet(w => w + e); setMonths(0); },
+    borrow: ({ tn, principal, hash, days }) => {
+      setPool(p => ({ ...p, lent: p.lent + principal })); setWallet(w => w + principal);
+      setWarrants(w => new Set(w).add(hash));
+      setLoans(l => [...l, { id: l.length, farmer: 'GBX7…Q4AF', principal, tn, hash, days, expiry: LEDGER + days * DAY, status: 'Active', mine: true }]);
+    },
+    repay: id => {
+      const l = loans.find(x => x.id === id);
+      setLoans(ls => ls.map(x => x.id === id ? { ...x, status: 'Repaid' } : x));
+      setPool(p => ({ shares: p.shares, lent: p.lent - l.principal }));
+      setWallet(w => w - l.principal * (1 + APR_PROD));
+      setWarrants(w => { const n = new Set(w); n.delete(l.hash); return n; });
+    },
+  };
+  const tone = toast && (toast.k === 'ok' ? ['var(--greenbg)', 'var(--green)'] : toast.k === 'err' ? ['var(--badbg)', 'var(--bad)'] : ['var(--goldbg)', 'var(--gold)']);
+  return html`<div class="max-w-6xl mx-auto px-4 py-6">
+    <header class="flex flex-wrap items-center justify-between gap-3 mb-6">
+      <div><h1 class="text-3xl font-bold">AgroBank</h1><p class="mute text-sm">Crédito agro on-chain · Stellar Testnet · Soroban SDK v28 <span class="px-2 py-0.5 rounded-full text-xs ml-1" style=${{ background: 'var(--goldbg)', color: 'var(--gold)' }}>prototipo simulado</span></p></div>
+      <div class="flex items-center gap-2">
+        <button class="btn btn2 text-sm" aria-label="Cambiar tema" onClick=${() => setTheme((theme || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')) === 'dark' ? 'light' : 'dark')}>Tema</button>
+        <button class=${conn ? 'btn btn2 mono' : 'btn'} onClick=${() => { setConn(!conn); setToast(null); }}>${conn ? `GBX7…Q4AF · ${usd(wallet)}` : 'Conectar billetera'}</button></div>
+    </header>
+    <div role="tablist" class="flex gap-2 mb-5 flex-wrap">
+      <button role="tab" class="tab" aria-selected=${tab === 'inv'} onClick=${() => setTab('inv')}>Inversor</button>
+      <button role="tab" class="tab" aria-selected=${tab === 'prod'} onClick=${() => setTab('prod')}>Productor (eWarrants)</button>
+      <button role="tab" class="tab" aria-selected=${tab === 'keep'} onClick=${() => setTab('keep')}>Keeper / Liquidaciones</button></div>
+    ${toast && html`<div role="status" class="mb-4 px-4 py-3 rounded-xl text-sm font-medium" style=${{ background: tone[0], color: tone[1] }}>${toast.m}</div>`}
+    ${tab === 'inv' ? html`<${Investor} s=${s} tx=${tx}/>` : tab === 'prod' ? html`<${Producer} s=${s} tx=${tx}/>` : html`<${Keeper} s=${s}/>`}
+    <footer class="mute text-xs mt-8">Datos simulados: no hay conexión a contratos ni a Pyth. Precio inicial USD 380/t, ajustable desde la pestaña Keeper. Software experimental; no constituye asesoramiento financiero ni legal.</footer>
+  </div>`;
+}
+ReactDOM.createRoot(document.getElementById('root')).render(html`<${App}/>`);
+</script>
+</body>
+</html>

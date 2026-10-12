@@ -1,0 +1,11 @@
+target/
+node_modules/
+.next/
+.vercel/
+.env
+.env.*
+!.env.example
+*.wasm
+packages/agrobank-client/dist/
+packages/agrobank-client/node_modules/
+supabase/.temp/

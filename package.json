@@ -1,0 +1,14 @@
+{
+  "name": "agrobank",
+  "private": true,
+  "scripts": {
+    "dev": "pnpm --filter web dev",
+    "build:web": "pnpm --filter web... run build",
+    "contracts:build": "make build",
+    "contracts:test": "make test",
+    "bindings": "make bindings"
+  },
+  "devDependencies": {
+    "supabase": "^2"
+  }
+}
