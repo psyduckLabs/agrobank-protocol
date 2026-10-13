@@ -1,26 +1,133 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --bg: #edf0ea;
+  --card: #fbfcfa;
+  --ink: #14211a;
+  --mute: #5c6b61;
+  --line: #d3dbd2;
+  --green: #2f6b3f;
+  --greenbg: #dcebdd;
+  --gold: #b7861f;
+  --goldbg: #f4e7c4;
+  --bad: #b3402f;
+  --badbg: #f6dad4;
 }
-
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
 @media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+  :root:not([data-theme="light"]) {
+    --bg: #0e1611;
+    --card: #162019;
+    --ink: #e7eee8;
+    --mute: #93a398;
+    --line: #27352b;
+    --green: #6fbf82;
+    --greenbg: #1b3524;
+    --gold: #e0b34a;
+    --goldbg: #3a3015;
+    --bad: #e58572;
+    --badbg: #3e1f19;
   }
+}
+:root[data-theme="dark"] {
+  --bg: #0e1611;
+  --card: #162019;
+  --ink: #e7eee8;
+  --mute: #93a398;
+  --line: #27352b;
+  --green: #6fbf82;
+  --greenbg: #1b3524;
+  --gold: #e0b34a;
+  --goldbg: #3a3015;
+  --bad: #e58572;
+  --badbg: #3e1f19;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font-sans), system-ui, sans-serif;
+  margin: 0;
+}
+h1,
+h2,
+h3,
+.disp {
+  font-family: var(--font-display), var(--font-sans), system-ui, sans-serif;
+  letter-spacing: -0.02em;
+}
+.card {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+}
+.inp {
+  width: 100%;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 0.65rem 0.8rem;
+  color: var(--ink);
+  font-size: 1rem;
+}
+.inp:focus-visible,
+.btn:focus-visible,
+.tab:focus-visible {
+  outline: 2px solid var(--green);
+  outline-offset: 2px;
+}
+.btn {
+  background: var(--green);
+  color: var(--bg);
+  border-radius: 10px;
+  padding: 0.7rem 1.1rem;
+  font-weight: 600;
+  border: 0;
+  cursor: pointer;
+}
+.btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.btn2 {
+  background: transparent;
+  color: var(--ink);
+  border: 1px solid var(--line);
+}
+.tab {
+  padding: 0.55rem 1rem;
+  border-radius: 999px;
+  font-weight: 600;
+  border: 1px solid transparent;
+  cursor: pointer;
+  background: transparent;
+  color: var(--mute);
+}
+.tab[aria-selected="true"] {
+  background: var(--ink);
+  color: var(--bg);
+}
+.mute {
+  color: var(--mute);
+}
+.mono {
+  font-variant-numeric: tabular-nums;
+}
+.xlink {
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  white-space: nowrap;
+}
+@keyframes pulse {
+  50% {
+    opacity: 0.35;
+  }
+}
+.dot {
+  animation: pulse 1.6s infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .dot {
+    animation: none;
+  }
 }

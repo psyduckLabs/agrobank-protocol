@@ -36,16 +36,30 @@ const { useState, useEffect, useMemo } = React;
 const html = htm.bind(React.createElement);
 const fmt = (n, d = 0) => new Intl.NumberFormat('es-AR', { minimumFractionDigits: d, maximumFractionDigits: d }).format(n);
 const usd = (n, d = 0) => 'USDC ' + fmt(n, d);
-const P_BASE = 380, P_MIN = 250, MIN_RATIO = 1.3, APR_INV = 0.12, APR_PROD = 0.18, LEDGER = 1204500, DAY = 17280;
+const P_BASE = 380, P_MIN = 250, MIN_RATIO = 1.3, APR_INV = 0.12, LEDGER = 1204500, DAY = 17280;
+// ── Espejo 1:1 de lib.rs (i128 → BigInt, USDC con 7 decimales) ──
+const BPS_DENOM = 10000n, ACTIVE_RATE_BPS = 1800, PASSIVE_RATE_BPS = 1200;
+const LEDGERS_PER_YEAR = 365n * BigInt(DAY);           // 6.307.200
+const ACC_PRECISION = 1000000000000n;                  // 1e12
+const toU = x => BigInt(Math.round(x * 1e7));          // USDC → unidades i128
+const fromU = u => Number(u) / 1e7;                    // unidades i128 → USDC (solo para mostrar)
+// interest_for(): principal × rate_bps × term_ledgers / (10_000 × LEDGERS_PER_YEAR), división entera (floor)
+const interestFor = (pU, bps, term) => pU * BigInt(bps) * BigInt(term) / (BPS_DENOM * LEDGERS_PER_YEAR);
+// split_interest(): (total, inversores, tesorería) — tesorería por resta, sin polvo perdido
+const splitInterest = (pU, term) => {
+  const total = interestFor(pU, ACTIVE_RATE_BPS, term), inv = interestFor(pU, PASSIVE_RATE_BPS, term);
+  return { total, inv, spread: total - inv };
+};
+// term = expiry_ledger − start_ledger (plazo pactado, igual que repay_loan)
+const loanTerm = l => Math.max(l.expiry - l.start, 0);
 // espejo de meets_collateral_ratio(): aritmética entera, sin flotantes
-const meetsRatio = (value, principal) =>
-  BigInt(Math.round(value * 1e7)) * 10000n >= BigInt(Math.round(principal * 1e7)) * 13000n;
+const meetsRatio = (value, principal) => toU(value) * 10000n >= toU(principal) * 13000n;
 const isExpired = l => LEDGER > l.expiry;              // contrato: sequence > expiry_ledger
 const seedHash = n => Array.from({ length: 64 }, (_, i) => '0123456789abcdef'[(i * 7 + n * 13 + i * i) % 16]).join('');
 const SEED = [
-  { id: 0, farmer: 'GA4K…R7LM', principal: 50000, tn: 250, hash: seedHash(1), expiry: LEDGER + DAY * 120, status: 'Active', mine: false },
-  { id: 1, farmer: 'GCQ2…9XTD', principal: 45000, tn: 160, hash: seedHash(2), expiry: LEDGER + DAY * 75, status: 'Active', mine: false },
-  { id: 2, farmer: 'GDM6…W3EH', principal: 26500, tn: 100, hash: seedHash(3), expiry: LEDGER + DAY * 200, status: 'Active', mine: false },
+  { id: 0, farmer: 'GA4K…R7LM', principal: 50000, tn: 250, hash: seedHash(1), start: LEDGER - DAY * 60, expiry: LEDGER + DAY * 120, status: 'Active', mine: false },
+  { id: 1, farmer: 'GCQ2…9XTD', principal: 45000, tn: 160, hash: seedHash(2), start: LEDGER - DAY * 105, expiry: LEDGER + DAY * 75, status: 'Active', mine: false },
+  { id: 2, farmer: 'GDM6…W3EH', principal: 26500, tn: 100, hash: seedHash(3), start: LEDGER - DAY * 10, expiry: LEDGER + DAY * 200, status: 'Active', mine: false },
 ];
 // 'Liquidable' es un estado derivado de la UI (no existe en LoanStatus). No usar el nombre del error del contrato.
 const loanStatus = (l, price) => l.status !== 'Active' ? l.status
@@ -80,13 +94,18 @@ function Investor({ s, tx }) {
   const a = parseFloat(amt) || 0;
   const util = s.pool.lent / s.pool.shares;
   const ok = a > 0 && a <= s.wallet;
-  const earned = s.pos * APR_INV * util / 12 * s.months;
+  const [wAmt, setWAmt] = useState('1000');
+  const w = parseFloat(wAmt) || 0, free = s.pool.shares - s.pool.lent;
+  // mismos chequeos y orden que withdraw_liquidity()
+  const wErr = !(w > 0) ? 'InvalidAmount (#2): el monto debe ser > 0.'
+    : w > s.pos ? 'InsufficientShares (#19): supera tu participación.'
+    : w > free ? `InsufficientLiquidity (#9): solo hay ${usd(free, 2)} sin prestar.` : null;
   return html`<div class="grid gap-4 lg:grid-cols-5">
     <div class="grid gap-4 lg:col-span-5 sm:grid-cols-2 lg:grid-cols-4">
       <${Stat} label="Pool de staking" value=${usd(s.pool.shares)} sub="TotalShares"/>
       <${Stat} label="Prestado a productores" value=${usd(s.pool.lent)} sub=${`Utilización ${fmt(util * 100, 1)}%`}/>
       <${Stat} label="Rendimiento efectivo" value=${fmt(APR_INV * util * 100, 2) + '%'} sub=${`12% TNA × utilización ${fmt(util * 100, 1)}%`}/>
-      <${Stat} label="Tu posición" value=${usd(s.pos)} sub=${`Devengado: ${usd(earned, 2)}`}/>
+      <${Stat} label="Tu posición" value=${usd(s.pos)} sub=${`Cobrable: ${usd(s.pending, 2)}`}/>
     </div>
     <div class="card p-5 lg:col-span-2">
       <h2 class="text-xl font-semibold">Depositar liquidez</h2>
@@ -97,14 +116,19 @@ function Investor({ s, tx }) {
       ${a > s.wallet && html`<p class="text-sm mt-3" style=${{ color: 'var(--bad)' }}>El monto supera tu saldo de USDC.</p>`}
       <div class="mt-4 text-sm mute">Ganarías ≈ <b style=${{ color: 'var(--green)' }} class="mono">${usd(a * APR_INV * util, 2)}</b> en 12 meses.</div>
       <button class="btn w-full mt-4" disabled=${!ok || s.busy} onClick=${() => tx('deposit_liquidity', () => s.deposit(a))}>${s.busy ? 'Procesando…' : 'Depositar USDC'}</button>
-      <button class="btn btn2 w-full mt-2" disabled=${s.pos <= 0 || s.busy} onClick=${() => tx('claim_yield', () => s.claim())}>Cobrar rendimiento (${usd(earned, 2)})</button>
-      <p class="mute text-xs mt-3">Llama a <code>deposit_liquidity(investor, amount)</code>. El rendimiento proviene solo de intereses repagados.</p>
+      <button class="btn btn2 w-full mt-2" disabled=${s.busy} onClick=${() => s.pending > 0 ? tx('claim_yield', () => s.claim()) : s.fail('NothingToClaim (#17): todavía no hay intereses repagados para cobrar.')}>Cobrar rendimiento (${usd(s.pending, 2)})</button>
+      <p class="mute text-xs mt-3">Llama a <code>deposit_liquidity(investor, amount)</code>. El rendimiento se acredita recién cuando un productor ejecuta <code>repay_loan</code> (acumulador <code>AccYieldPerShare</code>).</p>
+      <h3 class="text-lg font-semibold mt-6">Retirar capital</h3>
+      <p class="mute text-sm mt-1">Solo capital no prestado: <b class="mono">${usd(free, 2)}</b> libres en el pool.</p>
+      <label class="block mt-3 text-sm font-medium" for="wd">Monto a retirar</label>
+      <input id="wd" class="inp mono mt-1" inputMode="decimal" value=${wAmt} onInput=${e => setWAmt(e.target.value)}/>
+      ${wErr && w !== 0 && html`<p class="text-sm mt-2" style=${{ color: 'var(--bad)' }}>${wErr}</p>`}
+      <button class="btn btn2 w-full mt-3" disabled=${!!wErr || s.busy} onClick=${() => tx('withdraw_liquidity', () => s.withdraw(w))}>Retirar USDC</button>
     </div>
     <div class="card p-5 lg:col-span-3">
-      <div class="flex items-baseline justify-between flex-wrap gap-2"><h2 class="text-xl font-semibold">Ganancias acumuladas (proyección)</h2>
-        <div class="flex items-center gap-2 text-sm mute"><label for="mo">Meses simulados</label><input id="mo" type="range" min="0" max="12" value=${s.months} onInput=${e => s.setMonths(+e.target.value)}/><b class="mono">${s.months}</b></div></div>
+      <h2 class="text-xl font-semibold">Ganancias esperadas (proyección)</h2>
       <${Chart} deposit=${s.pos} rate=${APR_INV * util}/>
-      <p class="mute text-sm">A 12 meses: <b class="mono" style=${{ color: 'var(--green)' }}>${usd(s.pos * APR_INV * util, 2)}</b> sobre ${usd(s.pos)}.</p>
+      <p class="mute text-sm">A 12 meses: <b class="mono" style=${{ color: 'var(--green)' }}>${usd(s.pos * APR_INV * util, 2)}</b> sobre ${usd(s.pos)}, si la utilización se mantiene en ${fmt(util * 100, 1)}%. Es una estimación: on-chain el rendimiento se devenga en saltos, en cada repago.</p>
     </div>
   </div>`;
 }
@@ -136,7 +160,10 @@ function Producer({ s, tx }) {
     t > 0 && p > 0 && !ratioOk && `Undercollateralized (#10): cobertura ${fmt(ratio * 100, 1)}%, el mínimo es 130%.`,
   ].filter(Boolean);
   const ok = errs.length === 0;
-  const interest = p * APR_PROD, inv = p * APR_INV, spread = interest - inv;
+  const term = dOk ? parseInt(days) * DAY : 0;          // expiry_ledger − start_ledger
+  const sp = p > 0 && term > 0 ? splitInterest(toU(p), term) : { total: 0n, inv: 0n, spread: 0n };
+  const interest = fromU(sp.total), inv = fromU(sp.inv), spread = fromU(sp.spread);
+  const effPct = p > 0 ? interest / p * 100 : 0;
   const gaugePct = Math.min(ltv / 1, 1) * 100, limitPct = (1 / MIN_RATIO) * 100;
   const level = ltv === 0 ? 'var(--mute)' : ratioOk ? 'var(--green)' : 'var(--bad)';
   return html`<div class="grid gap-4 lg:grid-cols-5">
@@ -171,12 +198,14 @@ function Producer({ s, tx }) {
           <dt class="mute">Máximo prestable</dt><dd class="text-right">${usd(maxLoan)}</dd>
           <dt class="mute">Liquidez del pool</dt><dd class="text-right">${usd(free)}</dd></dl></div>
       <div class="card p-5"><h3 class="text-lg font-semibold">Repago: split atómico</h3>
-        <p class="mute text-sm mt-1">Al llamar <code>repay_loan</code>, en una transacción:</p>
+        <p class="mute text-sm mt-1">Al llamar <code>repay_loan</code>, en una transacción. Interés prorrateado a ${fmt(term)} ledgers (${dOk ? parseInt(days) : 0} días × 17.280) sobre 6.307.200 por año:</p>
         <dl class="grid grid-cols-2 gap-y-2 text-sm mt-3 mono">
-          <dt class="mute">Capital + 12% → pool</dt><dd class="text-right">${usd(p + inv)}</dd>
-          <dt class="mute">Spread 6% → tesorería</dt><dd class="text-right">${usd(spread)}</dd>
-          <dt class="mute font-semibold">Total a pagar (18%)</dt><dd class="text-right font-bold">${usd(p + interest)}</dd></dl></div>
-      ${s.loans.some(l => l.mine) && html`<div class="card p-5"><h3 class="text-lg font-semibold">Tus créditos</h3><ul class="mt-2 grid gap-3">${s.loans.filter(l => l.mine).map(l => html`<li key=${l.id} class="text-sm"><div class="flex justify-between"><b>Préstamo #${l.id}</b><${Badge} status=${loanStatus(l, s.price)}/></div><div class="mute mono">${usd(l.principal)} · ${fmt(l.tn)} t · ${l.hash.slice(0, 10)}…</div>${l.status === 'Active' && html`<button class="btn btn2 text-sm mt-2" disabled=${s.busy} onClick=${() => tx('repay_loan', () => s.repay(l.id))}>Repagar ${usd(l.principal * (1 + APR_PROD))}</button>`}</li>`)}</ul></div>`}
+          <dt class="mute">Capital + 12% TNA → pool</dt><dd class="text-right">${usd(p + inv, 2)}</dd>
+          <dt class="mute">Spread 6% TNA → tesorería</dt><dd class="text-right">${usd(spread, 2)}</dd>
+          <dt class="mute font-semibold">Total a pagar (18% TNA)</dt><dd class="text-right font-bold">${usd(p + interest, 2)}</dd>
+          <dt class="mute">Tasa efectiva del plazo</dt><dd class="text-right">${fmt(effPct, 3)}%</dd></dl>
+        <p class="mute text-xs mt-2">El interés se fija sobre el plazo pactado (<code>expiry_ledger − start_ledger</code>): repagar antes no lo reduce.</p></div>
+      ${s.loans.some(l => l.mine) && html`<div class="card p-5"><h3 class="text-lg font-semibold">Tus créditos</h3><ul class="mt-2 grid gap-3">${s.loans.filter(l => l.mine).map(l => html`<li key=${l.id} class="text-sm"><div class="flex justify-between"><b>Préstamo #${l.id}</b><${Badge} status=${loanStatus(l, s.price)}/></div><div class="mute mono">${usd(l.principal)} · ${fmt(l.tn)} t · ${l.hash.slice(0, 10)}…</div>${l.status === 'Active' && html`<button class="btn btn2 text-sm mt-2" disabled=${s.busy} onClick=${() => tx('repay_loan', () => s.repay(l.id))}>Repagar ${usd(l.principal + fromU(splitInterest(toU(l.principal), loanTerm(l)).total), 2)}</button>`}</li>`)}</ul></div>`}
     </div>
   </div>`;
 }
@@ -184,7 +213,7 @@ function Producer({ s, tx }) {
 function Keeper({ s }) {
   const risky = s.loans.filter(l => loanStatus(l, s.price) === 'Liquidable').length;
   const drop = (s.price / P_BASE - 1) * 100;
-  const steps = ['Simular transacción', 'Firmar payload ECDSA de Pyth', 'Confirmar en red'];
+  const steps = ['Obtener payload firmado de Pyth (leEcdsa)', 'Simular liquidate_collateral', 'Firmar y confirmar en red'];
   return html`<div class="grid gap-4">
     <div class="grid gap-4 sm:grid-cols-3">
       <${Stat} label="Precio Pyth (soja)" value=${`USD ${s.price}/t`} sub=${drop === 0 ? 'Sin variación' : `${fmt(drop, 1)}% vs. USD ${P_BASE}`}/>
@@ -203,7 +232,7 @@ function Keeper({ s }) {
       <ol class="grid gap-2 mt-3 text-sm">${steps.map((t, i) => html`<li key=${t} class="flex items-center gap-3" style=${{ color: i <= s.liq.stage ? 'var(--ink)' : 'var(--mute)' }}>
         <span class=${i === s.liq.stage ? 'dot' : ''} style=${{ width: 22, height: 22, borderRadius: 99, display: 'grid', placeItems: 'center', fontSize: 12, fontWeight: 700, background: i < s.liq.stage ? 'var(--green)' : i === s.liq.stage ? 'var(--gold)' : 'var(--line)', color: 'var(--bg)' }}>${i < s.liq.stage ? '✓' : i + 1}</span>
         <span class="font-medium">${t}</span>
-        ${i === 1 && s.liq.stage >= 1 && html`<code class="mono text-xs mute" style=${{ wordBreak: 'break-all' }}>price_update = 0x${s.liq.payload.slice(0, 40)}…</code>`}</li>`)}</ol></div>`}
+        ${i === 0 && s.liq.stage >= 1 && html`<code class="mono text-xs mute" style=${{ wordBreak: 'break-all' }}>price_update = 0x${s.liq.payload.slice(0, 40)}…</code>`}</li>`)}</ol></div>`}
     <div class="card p-5"><h2 class="text-xl font-semibold">Créditos originados</h2>
       <div style=${{ overflowX: 'auto' }}><table class="w-full text-sm mt-3" style=${{ minWidth: 820, borderCollapse: 'collapse' }}>
         <thead><tr class="mute text-left">${['ID', 'Productor', 'Hash eWarrant', 'Colateral', 'Liquida bajo', 'Expira (ledger)', 'Estado', ''].map(h => html`<th key=${h} class="py-2 pr-3 font-medium" style=${{ borderBottom: '1px solid var(--line)' }}>${h}</th>`)}</tr></thead>
@@ -232,8 +261,9 @@ function App() {
   const [wallet, setWallet] = useState(25000);
   const [conn, setConn] = useState(false);
   const [pool, setPool] = useState({ shares: 184200, lent: 121500 });
-  const [pos, setPos] = useState(5000);
-  const [months, setMonths] = useState(6);
+  // InvestorPosition y AccYieldPerShare en unidades i128 (BigInt), igual que el contrato
+  const [inv, setInv] = useState({ shares: toU(5000), rewardDebt: 0n, pending: 0n });
+  const [acc, setAcc] = useState(0n);
   const [loans, setLoans] = useState(SEED);
   const [price, setPrice] = useState(P_BASE);
   const [liq, setLiq] = useState(null);
@@ -263,21 +293,43 @@ function App() {
       setToast({ k: 'ok', m: `liquidate_collateral() confirmada · préstamo #${id} → Defaulted` });
     }, 4300);
   };
+  // settle_investor(): pasa a pending todo lo devengado desde el último movimiento
+  const settle = (pos, a) => {
+    const gross = pos.shares * a / ACC_PRECISION;
+    return { ...pos, pending: pos.pending + (gross - pos.rewardDebt), rewardDebt: gross };
+  };
+  const pendingNow = settle(inv, acc).pending;
   const s = {
     price, setPrice, liq, events, liquidate,
-    wallet, pool, pos, months, setMonths, loans, warrants, busy,
-    deposit: a => { setWallet(w => w - a); setPool(p => ({ ...p, shares: p.shares + a })); setPos(x => x + a); },
-    claim: () => { const e = pos * APR_INV * (pool.lent / pool.shares) / 12 * months; setWallet(w => w + e); setMonths(0); },
+    wallet, pool, pos: fromU(inv.shares), pending: fromU(pendingNow), loans, warrants, busy,
+    fail: m => setToast({ k: 'err', m }),
+    deposit: a => {
+      const aU = toU(a), p = settle(inv, acc), shares = p.shares + aU;
+      setInv({ ...p, shares, rewardDebt: shares * acc / ACC_PRECISION });
+      setWallet(w => w - a); setPool(pl => ({ ...pl, shares: pl.shares + a }));
+    },
+    withdraw: a => {
+      const aU = toU(a), p = settle(inv, acc), shares = p.shares - aU;
+      setInv({ ...p, shares, rewardDebt: shares * acc / ACC_PRECISION });
+      setWallet(w => w + a); setPool(pl => ({ ...pl, shares: pl.shares - a }));
+    },
+    claim: () => {
+      const p = settle(inv, acc);
+      setWallet(w => w + fromU(p.pending)); setInv({ ...p, pending: 0n });
+    },
     borrow: ({ tn, principal, hash, days }) => {
       setPool(p => ({ ...p, lent: p.lent + principal })); setWallet(w => w + principal);
       setWarrants(w => new Set(w).add(hash));
-      setLoans(l => [...l, { id: l.length, farmer: 'GBX7…Q4AF', principal, tn, hash, days, expiry: LEDGER + days * DAY, status: 'Active', mine: true }]);
+      setLoans(l => [...l, { id: l.length, farmer: 'GBX7…Q4AF', principal, tn, hash, days, start: LEDGER, expiry: LEDGER + days * DAY, status: 'Active', mine: true }]);
     },
+    // repay_loan(): split atómico + AccYieldPerShare += interés_inversores × 1e12 / total_shares
     repay: id => {
-      const l = loans.find(x => x.id === id);
+      const l = loans.find(x => x.id === id), pU = toU(l.principal);
+      const { total, inv: invInt } = splitInterest(pU, loanTerm(l));
+      setAcc(a => a + invInt * ACC_PRECISION / toU(pool.shares));
       setLoans(ls => ls.map(x => x.id === id ? { ...x, status: 'Repaid' } : x));
       setPool(p => ({ shares: p.shares, lent: p.lent - l.principal }));
-      setWallet(w => w - l.principal * (1 + APR_PROD));
+      setWallet(w => w - fromU(pU + total));
       setWarrants(w => { const n = new Set(w); n.delete(l.hash); return n; });
     },
   };

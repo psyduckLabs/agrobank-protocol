@@ -43,6 +43,8 @@ pub const ACC_PRECISION: i128 = 1_000_000_000_000;
 pub const USDC_DECIMALS: i32 = 7;
 /// Antigüedad máxima aceptada del precio de Pyth (segundos).
 pub const MAX_PRICE_AGE_SECS: u64 = 60;
+/// Tolerancia máxima de un precio con timestamp posterior al del ledger (segundos).
+pub const MAX_FUTURE_SKEW_SECS: u64 = 5;
 /// Ledgers por día (~5 s por ledger).
 pub const DAY_IN_LEDGERS: u32 = 17_280;
 /// Ledgers por año de 365 días: base del prorrateo de intereses.
@@ -76,6 +78,7 @@ pub enum Error {
     NothingToClaim = 17,
     AlreadyInitialized = 18,
     InsufficientShares = 19,
+    FuturePrice = 20,
 }
 
 // ───────────────────────────── Tipos de datos ─────────────────────────────
@@ -214,6 +217,17 @@ pub struct LoanDefaulted {
     pub loan_id: u64,
     pub expired: bool,
     pub collateral_value: i128,
+}
+
+/// Precio de Pyth efectivamente usado (auditoría del oráculo en `request_loan`
+/// y `liquidate_collateral`; se une al resto de eventos por tx hash).
+#[contractevent]
+pub struct OraclePriceUsed {
+    #[topic]
+    pub feed_id: u32,
+    pub price: i64,
+    pub exponent: i32,
+    pub publish_time_us: u64,
 }
 
 #[contractevent]
@@ -378,10 +392,20 @@ fn read_soy_price(env: &Env, cfg: &Config, update: Bytes) -> Result<(i128, i32),
         .timestamp()
         .checked_mul(1_000_000)
         .ok_or(Error::MathOverflow)?;
+    if v.publish_time_us > now_us.saturating_add(MAX_FUTURE_SKEW_SECS * 1_000_000) {
+        return Err(Error::FuturePrice);
+    }
     let age_us = now_us.saturating_sub(v.publish_time_us);
     if age_us > MAX_PRICE_AGE_SECS * 1_000_000 {
         return Err(Error::StalePrice);
     }
+    OraclePriceUsed {
+        feed_id: v.feed_id,
+        price: v.price,
+        exponent: v.exponent,
+        publish_time_us: v.publish_time_us,
+    }
+    .publish(env);
     Ok((v.price as i128, v.exponent))
 }
 
@@ -772,7 +796,8 @@ mod test {
     const USDC: i128 = 10_000_000; // 1 USDC en unidades de 7 decimales
     const YEAR: u32 = 6_307_200; // LEDGERS_PER_YEAR
 
-    // Pyth simulado: precio configurable, publicado "ahora".
+    // Pyth simulado: precio configurable, publicado "ahora" menos `age_secs`
+    // (negativo = timestamp en el futuro).
     #[contract]
     pub struct MockPyth;
 
@@ -781,12 +806,17 @@ mod test {
         pub fn set_price(env: Env, price: i64) {
             env.storage().instance().set(&1u32, &price);
         }
+        pub fn set_age(env: Env, age_secs: i64) {
+            env.storage().instance().set(&2u32, &age_secs);
+        }
         pub fn verify_update(env: Env, _update: Bytes) -> VerifiedPrice {
+            let age_secs: i64 = env.storage().instance().get(&2u32).unwrap_or(0);
+            let now_us = env.ledger().timestamp() as i64 * 1_000_000;
             VerifiedPrice {
                 feed_id: 7,
                 price: env.storage().instance().get(&1u32).unwrap(),
                 exponent: -8,
-                publish_time_us: env.ledger().timestamp() * 1_000_000,
+                publish_time_us: (now_us - age_secs * 1_000_000) as u64,
             }
         }
     }
@@ -930,6 +960,32 @@ mod test {
             &f.farmer, &(30_000 * USDC), &500, &(1_000 + YEAR), &hash(&f.env, 3), &Bytes::new(&f.env),
         );
         assert_eq!(r, Err(Ok(Error::InsufficientLiquidity)));
+    }
+
+    #[test]
+    fn rejects_stale_and_future_prices() {
+        let f = setup();
+        f.bank.deposit_liquidity(&f.investor, &(20_000 * USDC));
+        let p = 10_000 * USDC;
+        let expiry = 1_000 + YEAR;
+        // 61 s de antigüedad > MAX_PRICE_AGE_SECS
+        f.pyth.set_age(&61);
+        let r = f.bank.try_request_loan(
+            &f.farmer, &p, &50, &expiry, &hash(&f.env, 6), &Bytes::new(&f.env),
+        );
+        assert_eq!(r, Err(Ok(Error::StalePrice)));
+        // 10 s en el futuro > MAX_FUTURE_SKEW_SECS
+        f.pyth.set_age(&-10);
+        let r = f.bank.try_request_loan(
+            &f.farmer, &p, &50, &expiry, &hash(&f.env, 6), &Bytes::new(&f.env),
+        );
+        assert_eq!(r, Err(Ok(Error::FuturePrice)));
+        // 3 s en el futuro: dentro de la tolerancia
+        f.pyth.set_age(&-3);
+        let id = f.bank.request_loan(
+            &f.farmer, &p, &50, &expiry, &hash(&f.env, 6), &Bytes::new(&f.env),
+        );
+        assert_eq!(f.bank.get_loan(&id).status, LoanStatus::Active);
     }
 
     #[test]

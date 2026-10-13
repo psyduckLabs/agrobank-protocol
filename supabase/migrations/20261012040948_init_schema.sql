@@ -1,4 +1,4 @@
--- Perprofiles off-chain (el wallet es la identidad)
+-- Perfiles off-chain (el wallet es la identidad)
 create table profiles (
   wallet       text primary key check (wallet ~ '^G[A-Z2-7]{55}$'),
   roles        text[] not null default '{}',     -- investor | farmer | keeper
