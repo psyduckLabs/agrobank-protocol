@@ -6,9 +6,12 @@
     "build:web": "pnpm --filter web... run build",
     "contracts:build": "stellar contract build",
     "contracts:test": "cargo test",
-    "bindings": "stellar contract build && stellar contract bindings typescript --wasm target/wasm32v1-none/release/agrobank_protocol.wasm --output-dir packages/agrobank-client --overwrite && node -e \"const f='packages/agrobank-client/package.json',p=require('./'+f);p.name='@agrobank/client';require('fs').writeFileSync(f,JSON.stringify(p,null,2)+'\\n')\""
+    "bindings": "stellar contract build && stellar contract bindings typescript --wasm target/wasm32v1-none/release/agrobank_protocol.wasm --output-dir packages/agrobank-client --overwrite && node -e \"const f='packages/agrobank-client/package.json',p=require('./'+f);p.name='@agrobank/client';require('fs').writeFileSync(f,JSON.stringify(p,null,2)+'\\n')\"",
+    "indexer:test": "bash scripts/test-indexer.sh",
+    "e2e": "node e2e/testnet-cycle.mjs"
   },
   "devDependencies": {
     "supabase": "^2"
-  }
+  },
+  "packageManager": "pnpm@11.24.0"
 }

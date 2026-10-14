@@ -1,0 +1,18 @@
+{
+  "at": "2026-10-14T00:28:02.570Z",
+  "ledger": 5182818,
+  "loans": 8,
+  "repaidChecked": 4,
+  "oracleAudit": 11,
+  "events": {
+    "liquidity_deposited": 5,
+    "loan_defaulted": 3,
+    "loan_originated": 8,
+    "loan_repaid": 4,
+    "oracle_price_used": 11,
+    "yield_claimed": 4
+  },
+  "totalLent": "1800000000000",
+  "differences": [],
+  "ok": true
+}

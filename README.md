@@ -35,6 +35,10 @@ git clone https://github.com/psyduckLabs/agrobank-protocol.git
 |---|---|
 | ![Inversor](docs/screenshots/04-app-inversor.png) | ![Simulador](docs/screenshots/03-landing-simulador.png) |
 
+| Pruebas en la página: tests, ciclo en Testnet e indexador |
+|---|
+| ![Pruebas](docs/screenshots/08-landing-pruebas.png) |
+
 Las capturas las genera la prueba E2E (`e2e/testnet-cycle.mjs`) recorriendo el sitio publicado.
 
 ---
@@ -72,6 +76,30 @@ cargo test
 # agrobank-protocol: 9 passed  ·  price-verifier: 4 passed
 ```
 
+### Indexador y Supabase: reconciliación sin diferencias
+
+`apps/web/scripts/indexer.ts` lee los eventos del contrato con `getEvents` y los vuelca al esquema de [`supabase/migrations`](supabase/migrations) (`chain_events`, `loans`, `warrant_pledges`, `oracle_audit`, `pool_snapshots`, `indexer_state`). Después reconcilia la base contra el contrato:
+
+| Chequeo | Resultado |
+|---|---|
+| Migraciones aplicadas sobre Postgres 16 | ✅ las dos, sin errores |
+| Eventos indexados (segunda corrida idempotente) | 35, luego 0 |
+| Préstamos de la base vs. `get_loan` on-chain | 8 sin diferencias |
+| Repagos: vista SQL `loan_repayment_quotes` vs. `LoanRepaid` on-chain | 4 sin diferencias (la fórmula SQL da al stroop lo que transfirió el contrato) |
+| `total_lent` de la base vs. `pool_stats` | igual |
+| Precios en `oracle_audit` | 11 |
+
+```bash
+pnpm indexer:test     # Postgres en Docker + migraciones + indexador + reconciliación
+# con Supabase real: DATABASE_URL=<connection string> node apps/web/scripts/indexer.ts
+```
+
+Reporte: [`docs/indexer-reconciliation.json`](docs/indexer-reconciliation.json). La landing muestra la actividad on-chain (`/api/events`) y este resultado.
+
+### CI
+
+[`.github/workflows/ci.yml`](.github/workflows/ci.yml) corre en cada PR: `cargo test`, build de la web, migraciones de Supabase sobre Postgres y el indexador contra Testnet con reconciliación.
+
 ---
 
 ## 🔌 Cómo funciona en Testnet
@@ -96,6 +124,10 @@ Keeper liquida ─► /api/price?px= ──────────────�
 | **Oráculo** | `apps/web/src/app/api/price` | Firma updates frescos (menos de 60 s, como exige `read_soy_price`). `?px=` simula un movimiento de mercado para probar liquidaciones. |
 | **Faucet** | `apps/web/src/app/api/faucet` | El emisor del USDC de prueba envía 50.000 USDC a cuentas con trustline. |
 | **Billetera de demo** | `apps/web/src/lib/chain.ts` | Genera una clave de Testnet en el navegador, la fondea con Friendbot, crea la trustline y pide USDC. Sin extensión. También funcionan Freighter, xBull, Albedo y Lobstr vía Stellar Wallets Kit. |
+
+| **Indexador** | `apps/web/scripts/indexer.ts` · `/api/events` | Eventos del contrato al esquema de Supabase, con reconciliación; la landing muestra la actividad y los precios usados. |
+
+**Estado de Pyth:** el contrato ya habla la interfaz del verificador de Pyth Pro (`verify_update`). Para Testnet usamos un verificador propio porque Pyth Pro requiere una suscripción con token y todavía no confirmamos un feed de soja en Stellar ([docs](https://docs.pyth.network/price-feeds/pro/integrate-as-consumer/stellar)). Pasar a Pyth es desplegar con `pyth_verifier` apuntando al contrato oficial y adaptar `read_soy_price` al payload `leEcdsa`.
 
 Las claves del admin, del oráculo y del emisor son **solo de Testnet** y viven como variables de entorno del servidor (`AGROBANK_ADMIN_SECRET`, `AGROBANK_ORACLE_SECRET`, `USDC_ISSUER_SECRET`).
 
@@ -129,7 +161,8 @@ agrobank-protocol/
 │   └── agrobank-client/        # bindings TypeScript generados (@agrobank/client)
 ├── apps/
 │   └── web/                    # Next.js: landing (/), app (/app), prototipo (/demo) y API
-│       └── src/app/api/        # faucet · price · loan · status
+│       ├── src/app/api/        # faucet · price · loan · status · events
+│       └── scripts/indexer.ts  # indexador de eventos → Supabase + reconciliación
 ├── deployments/testnet.json    # direcciones desplegadas
 ├── e2e/testnet-cycle.mjs       # prueba E2E con Playwright contra Testnet
 ├── scripts/deploy-testnet.sh   # despliegue completo en Testnet

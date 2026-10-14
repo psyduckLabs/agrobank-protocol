@@ -252,9 +252,21 @@ input[type=range]::-moz-range-thumb{width:12px;height:12px;border-radius:50%;bac
 .tbl.addr a{word-break:break-all;color:var(--field)}
 .ok-tag{background:var(--fieldbg);color:var(--field);font-size:12px;vertical-align:middle;margin-left:8px}
 #proof-table a{color:var(--field);font-family:var(--mono);font-size:12.5px}
+#proof-table td:last-child{white-space:nowrap;width:auto}
 
 .sec-tables>div,.split>*{min-width:0}
 .tbl.ctl td:first-child{overflow-wrap:anywhere}
+
+.tbl.feed td{padding:12px 12px 12px 0;font-size:14px}
+.tbl.feed td:first-child{width:auto;color:var(--ink)}
+.tbl.feed td small{display:block;color:var(--mute);font-size:12.5px;margin-top:2px}
+.tbl.feed td:last-child{text-align:right;white-space:nowrap;padding-right:0}
+.tbl.feed a{color:var(--field);font-family:var(--mono);font-size:12px}
+.ev{font:500 11.5px/1 var(--mono);padding:4px 7px;border-radius:3px;background:var(--sand);color:var(--ink2);white-space:nowrap}
+.ev.loan_originated{background:var(--fieldbg);color:var(--field)}
+.ev.loan_repaid{background:#E6EEF6;color:#2B5778}
+.ev.loan_defaulted{background:var(--badbg);color:var(--bad)}
+.ev.oracle_price_used{background:var(--soybg);color:var(--soy)}
 
 /* Roadmap */
 .tbl.road td:first-child{width:12%;font-family:var(--mono);font-size:13px}
@@ -377,6 +389,18 @@ footer{background:var(--ink);color:#B9B6AC;font-size:14px;padding:64px 0 calc(32
       </tbody>
     </table></div>
     <p class="note" id="lv-err" hidden>No pude leer el contrato ahora mismo. Probá recargar en unos segundos.</p>
+    <div class="sec-tables" style="margin-top:72px">
+      <div>
+        <h3>Actividad on-chain</h3>
+        <div class="tblwrap"><table class="tbl feed" id="feed"><tbody><tr><td>Leyendo eventos del contrato…</td></tr></tbody></table></div>
+        <p class="note" id="feed-meta">Eventos decodificados desde <code>getEvents</code> del RPC de Soroban.</p>
+      </div>
+      <div>
+        <h3>Precios del oráculo usados</h3>
+        <div class="tblwrap"><table class="tbl feed" id="oracle"><tbody><tr><td>…</td></tr></tbody></table></div>
+        <p class="note">Evento <code>OraclePriceUsed</code>: cada precio que el contrato aceptó, con su hora de publicación. Es la tabla <code>oracle_audit</code> del esquema de Supabase.</p>
+      </div>
+    </div>
   </div>
 </section>
 
@@ -621,6 +645,9 @@ footer{background:var(--ink);color:#B9B6AC;font-size:14px;padding:64px 0 calc(32
           <tbody><tr><td>Cargando las transacciones de la última corrida…</td><td></td></tr></tbody>
         </table></div>
         <p class="note" id="proof-meta">Prueba E2E con Playwright: <code>e2e/testnet-cycle.mjs</code>.</p>
+        <h3 style="margin-top:48px">Indexador y base off-chain</h3>
+        <div class="tblwrap"><table class="tbl risk" id="idx-table"><tbody><tr><td>…</td><td></td></tr></tbody></table></div>
+        <p class="note">El indexador (<code>apps/web/scripts/indexer.ts</code>) vuelca los eventos al esquema de <code>supabase/migrations</code> y reconcilia la base contra el contrato. Probado contra Postgres 16 con <code>scripts/test-indexer.sh</code>.</p>
       </div>
     </div>
   </div>
@@ -642,7 +669,7 @@ footer{background:var(--ink);color:#B9B6AC;font-size:14px;padding:64px 0 calc(32
         <tr><td>Fase 1</td><td>Oráculo real</td><td>Reemplazar el verificador de Testnet por Pyth Lazer con feed de soja.</td><td>Tests con updates reales.</td></tr>
         <tr><td>Fase 2</td><td>Economía</td><td>Devengo continuo y fondo de reserva.</td><td>Simulación de utilización y defaults.</td></tr>
         <tr><td>Fase 3</td><td>Atestación real</td><td>Validación del eWarrant y de Cartas de Porte antes de la cofirma.</td><td>Integración con depositarios.</td></tr>
-        <tr><td>Fase 4</td><td>Indexador</td><td>Eventos de la red volcados a Supabase.</td><td>Reconciliación diaria sin diferencias.</td></tr>
+        <tr class="now"><td>Hecho</td><td>Indexador</td><td>Eventos de la red volcados al esquema de Supabase.</td><td>Reconciliación sin diferencias (CI).</td></tr>
         <tr><td>Fase 5</td><td>Gobernanza</td><td>Multisig, pausa y vigencia del storage.</td><td>Runbook de operación.</td></tr>
         <tr><td>Fase 6</td><td>Auditoría externa</td><td>Revisión de seguridad del contrato.</td><td>Hallazgos críticos y altos cerrados.</td></tr>
         <tr><td>Fase 7</td><td>Piloto</td><td>Mainnet con topes bajos y depositarios reales.</td><td>Primer ciclo de campaña repagado.</td></tr>
@@ -758,6 +785,34 @@ footer{background:var(--ink);color:#B9B6AC;font-size:14px;padding:64px 0 calc(32
     $('lv-at').textContent = 'leído a las ' + new Date(s.at).toLocaleTimeString('es-AR');
     link('lv-c', 'contract', s.contract); link('lv-v', 'contract', s.verifier); link('lv-u', 'contract', s.usdc); link('lv-t', 'account', s.treasury);
   }).catch(() => { $('lv-err').hidden = false; });
+  const LABEL = { liquidity_deposited: 'Depósito', liquidity_withdrawn: 'Retiro', yield_claimed: 'Cobro de rendimiento', loan_originated: 'Crédito originado', loan_repaid: 'Repago', loan_defaulted: 'Liquidación', oracle_price_used: 'Precio del oráculo' };
+  const usdc = u => f2.format(Number(u) / 1e7) + ' USDC';
+  const evText = e => {
+    const d = e.data;
+    if (e.type === 'loan_originated') return `Crédito #${e.loanId}: ${usdc(d.principal)}`;
+    if (e.type === 'loan_repaid') return `Crédito #${e.loanId}: ${usdc(d.to_pool)} al pool, ${usdc(d.to_treasury)} a tesorería`;
+    if (e.type === 'loan_defaulted') return `Crédito #${e.loanId}: ${d.expired ? 'vencido' : 'colateral ' + usdc(d.collateral_value)}`;
+    if (e.type === 'oracle_price_used') return `Soja USD ${f2.format(Number(d.price) * Math.pow(10, Number(d.exponent)))}/t`;
+    return `${short(String(d.investor || ''))}: ${usdc(d.amount)}`;
+  };
+  const ago = t => { const s = Math.max(0, (Date.now() - new Date(t)) / 1000); return s < 90 ? `hace ${Math.round(s)} s` : s < 5400 ? `hace ${Math.round(s / 60)} min` : s < 129600 ? `hace ${Math.round(s / 3600)} h` : `hace ${Math.round(s / 86400)} d`; };
+  fetch('/api/events?limit=10').then(r => r.ok ? r.json() : Promise.reject()).then(x => {
+    const row = e => `<tr><td><span class="ev ${e.type}">${LABEL[e.type] || e.type}</span> ${evText(e)}<small>ledger ${f0.format(e.ledger)} · ${ago(e.at)}</small></td><td><a target="_blank" rel="noopener" href="${ex('tx', e.txHash)}">${short(e.txHash)}</a></td></tr>`;
+    document.querySelector('#feed tbody').innerHTML = x.events.map(row).join('') || '<tr><td>Sin eventos todavía.</td></tr>';
+    document.querySelector('#oracle tbody').innerHTML = x.oracle.slice(0, 6).map(e => `<tr><td>${evText(e)}<small>publicado ${new Date(Number(e.data.publish_time_us) / 1000).toLocaleTimeString('es-AR')} · ledger ${f0.format(e.ledger)}</small></td><td><a target="_blank" rel="noopener" href="${ex('tx', e.txHash)}">${short(e.txHash)}</a></td></tr>`).join('');
+    $('feed-meta').textContent = `${f0.format(x.total)} eventos del contrato, decodificados desde getEvents del RPC de Soroban.`;
+  }).catch(() => {});
+  fetch('/indexer.json').then(r => r.ok ? r.json() : Promise.reject()).then(r => {
+    const ev = Object.values(r.events).reduce((a, b) => a + b, 0);
+    const rows = [
+      ['Eventos indexados', `${f0.format(ev)} en <code>chain_events</code>`],
+      ['Préstamos reconciliados', `${r.loans} contra <code>get_loan</code>`],
+      ['Repagos: fórmula SQL vs. on-chain', `${r.repaidChecked} sin diferencia`],
+      ['Precios auditados', `${r.oracleAudit} en <code>oracle_audit</code>`],
+      ['Resultado', r.ok ? '<span class="sev ok-tag" style="margin:0">0 diferencias</span>' : `<span class="sev hi">${r.differences.length} diferencias</span>`],
+    ];
+    document.querySelector('#idx-table tbody').innerHTML = rows.map(([a, b]) => `<tr><td>${a}</td><td style="white-space:nowrap">${b}</td></tr>`).join('');
+  }).catch(() => {});
   fetch('/proofs.json').then(r => r.ok ? r.json() : Promise.reject()).then(p => {
     const tb = document.querySelector('#proof-table tbody');
     tb.innerHTML = '';
