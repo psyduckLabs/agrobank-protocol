@@ -18,6 +18,13 @@ import {
   ContractError,
   type WriteMethod,
   addUsdcTrustline,
+  connectBurner,
+  faucetUsdc,
+  isBurner,
+  requestLoanLive,
+  issueEWarrant,
+  type IssuedWarrant,
+  signedPrice,
   connectWallet,
   fundWithFriendbot,
   usdcAssetName,
@@ -197,6 +204,9 @@ interface Actions {
   claim: () => void;
   borrow: (b: { tn: number; principal: number; hash: string; days: number }) => void;
   repay: (id: number) => void;
+  /** En testnet: el depositario emite un eWarrant firmado y devuelve su hash. */
+  issueWarrant: (tn: number) => Promise<string | null>;
+  warrant: IssuedWarrant | null;
 }
 
 function Investor({ v, a }: { v: View; a: Actions }) {
@@ -301,7 +311,7 @@ function Producer({ v, a, price }: { v: View; a: Actions; price: number }) {
     p > 0 && p > free && `InsufficientLiquidity (#9): el pool tiene ${usd(free)} disponibles.`,
     t > 0 && p > 0 && !ratioOk && `Undercollateralized (#10): cobertura ${fmt(ratio * 100, 1)}%, el mínimo es 130%.`,
   ].filter((e): e is string => typeof e === "string");
-  const ok = errs.length === 0 && !v.live;
+  const ok = errs.length === 0;
   const term = dOk ? parseInt(days) * DAY : 0; // expiry_ledger − start_ledger
   const sp = p > 0 && term > 0 ? splitInterest(toU(p), term) : null;
   const interest = sp ? fromU(sp.total) : 0;
@@ -335,7 +345,18 @@ function Producer({ v, a, price }: { v: View; a: Actions; price: number }) {
             <label className="text-sm font-medium" htmlFor="hs">Hash SHA-256 del eWarrant [Decreto 640/2024]</label>
             <div className="flex gap-2 mt-1">
               <input id="hs" className="inp mono" style={{ fontSize: ".8rem" }} placeholder="64 caracteres hexadecimales" value={hash} onChange={(e) => setHash(e.target.value)} />
-              <button className="btn btn2 text-sm" style={{ whiteSpace: "nowrap" }} onClick={() => setHash(randHex())}>Hash de prueba</button>
+              <button
+                className="btn btn2 text-sm"
+                style={{ whiteSpace: "nowrap" }}
+                disabled={a.busy}
+                onClick={async () => {
+                  if (!v.live) return setHash(randHex());
+                  const h = await a.issueWarrant(Math.round(t));
+                  if (h) setHash(h);
+                }}
+              >
+                {v.live ? "Emitir eWarrant" : "Hash de prueba"}
+              </button>
             </div>
           </div>
           <div>
@@ -343,6 +364,13 @@ function Producer({ v, a, price }: { v: View; a: Actions; price: number }) {
             <input id="dy" className="inp mono mt-1" inputMode="numeric" value={days} onChange={(e) => setDays(e.target.value)} />
             <p className="mute text-xs mt-1">Se convierte en <code>expiry_ledger</code> (≈ 17.280 ledgers/día).</p>
           </div>
+          {v.live && a.warrant && a.warrant.hash === h && (
+            <div className="sm:col-span-2 text-xs mute" style={{ border: "1px solid var(--line)", borderRadius: 6, padding: ".6rem .8rem" }}>
+              <b style={{ color: "var(--green)" }}>eWarrant {a.warrant.ewarrant.id}</b> · {fmt(a.warrant.ewarrant.toneladas)} t de soja ·{" "}
+              {a.warrant.ewarrant.depositario} · firmado {new Date(a.warrant.ewarrant.emitido).toLocaleString("es-AR")}. El admin verifica esta firma
+              antes de cofirmar.
+            </div>
+          )}
         </div>
         <div className="mt-6">
           <div className="flex justify-between text-sm">
@@ -365,7 +393,7 @@ function Producer({ v, a, price }: { v: View; a: Actions; price: number }) {
         </button>
         <p className="mute text-xs mt-2">
           {v.live
-            ? "En testnet, request_loan exige la co-firma del admin y un precio firmado de Pyth verificado on-chain, así que no se origina desde el navegador. Para recorrer el flujo completo (crédito → repago → rendimiento → liquidación), desconectá la billetera y usá el modo demo. Los préstamos que existan on-chain aparecen abajo en «Tus créditos» y se repagan desde acá."
+            ? "En testnet, el servidor de AgroBank valida el pedido, firma un precio fresco del oráculo (USD 380/t de referencia) y cofirma como admin. Vos firmás la transacción y el contrato verifica la firma del precio, el 130% y el hash on-chain."
             : "Llama a request_loan (requiere firma del productor y del admin; la demo simula ambas)."}
         </p>
       </div>
@@ -437,7 +465,7 @@ function Keeper({
   const risky = v.loans.filter((l) => loanStatus(l, price, v.ledger) === "Liquidable").length;
   const drop = (price / P_BASE - 1) * 100;
   const steps = v.live
-    ? ["Simular liquidate_collateral", "Firmar con tu billetera", "Confirmar en red"]
+    ? ["Pedir precio firmado al oráculo", "Firmar liquidate_collateral", "Verificar firma on-chain y confirmar"]
     : ["Obtener payload firmado de Pyth (leEcdsa)", "Simular liquidate_collateral", "Firmar y confirmar en red"];
   return (
     <div className="grid gap-4">
@@ -462,7 +490,7 @@ function Keeper({
         </div>
         <p className="mute text-xs mt-2">
           {v.live
-            ? "En testnet la liquidación por precio necesita un payload firmado de Pyth; desde acá se ejecuta on-chain la liquidación por vencimiento (sin oráculo)."
+            ? "Al liquidar, el oráculo de Testnet firma este precio y el contrato verificador valida la firma ed25519 on-chain antes de usarlo. Un crédito vencido se liquida sin consultar el oráculo."
             : "Reemplaza el precio verificado de Pyth que recibiría liquidate_collateral(loan_id, price_update)."}
         </p>
       </div>
@@ -504,7 +532,7 @@ function Keeper({
                 const ratio = l.principal > 0 ? (l.tn * price) / l.principal : 0;
                 const bad = st === "Liquidable";
                 const expired = v.ledger > l.expiry;
-                const canRun = bad && (!v.live || expired);
+                const canRun = bad;
                 return (
                   <tr key={l.id} style={{ background: bad ? "var(--badbg)" : "transparent", borderBottom: "1px solid var(--line)" }}>
                     <td className="py-3 pr-3 px-2 font-semibold">#{l.id}</td>
@@ -522,7 +550,7 @@ function Keeper({
                         className="btn text-sm"
                         style={{ background: "var(--bad)", whiteSpace: "nowrap" }}
                         disabled={!canRun || busy}
-                        title={bad && !canRun ? "Bajo 130% por precio: requiere payload firmado de Pyth" : undefined}
+                        title={bad ? (expired ? "Vencido: el contrato no consulta el oráculo" : "Bajo 130%: se envía un precio firmado por el oráculo de Testnet") : undefined}
                         onClick={() => liquidate(l.id)}
                       >
                         {v.live ? "Liquidar on-chain" : "Ejecutar Liquidación de Pyth"}
@@ -564,6 +592,7 @@ function AccountSetup({
   onTrust,
   onRefresh,
   onCopy,
+  onFaucet,
 }: {
   address: string;
   acct: AccountState;
@@ -573,6 +602,7 @@ function AccountSetup({
   onTrust: () => void;
   onRefresh: () => void;
   onCopy: (text: string, what: string) => void;
+  onFaucet: () => void;
 }) {
   const hasUsdc = acct.usdc !== null && acct.usdc > BigInt(0);
   if (acct.exists && acct.trustline && hasUsdc) return null;
@@ -615,12 +645,12 @@ function AccountSetup({
       body:
         acct.trustline && !hasUsdc ? (
           <div className="mt-2 grid gap-2">
-            <p className="mute text-xs">El emisor del USDC de prueba te envía saldo desde la CLI:</p>
-            <pre className="mono text-xs p-3 rounded-lg" style={{ background: "var(--bg)", overflowX: "auto", margin: 0, whiteSpace: "pre-wrap", wordBreak: "break-all" }}>{cmd}</pre>
-            <div className="flex gap-2">
-              <button className="btn btn2 text-sm" onClick={() => onCopy(cmd, "Comando")}>Copiar comando</button>
-              <button className="btn btn2 text-sm" disabled={busy} onClick={onRefresh}>{busy ? "Actualizando…" : "Ya lo envié, actualizar"}</button>
-            </div>
+            <div><button className="btn text-sm" disabled={busy} onClick={onFaucet}>Recibir 50.000 USDC de prueba</button></div>
+            <details className="mute text-xs">
+              <summary>O pedilo desde la CLI</summary>
+              <pre className="mono text-xs p-3 rounded-lg mt-2" style={{ background: "var(--bg)", overflowX: "auto", margin: 0, whiteSpace: "pre-wrap", wordBreak: "break-all" }}>{cmd}</pre>
+              <button className="btn btn2 text-sm mt-2" onClick={() => onCopy(cmd, "Comando")}>Copiar comando</button>
+            </details>
           </div>
         ) : null,
     },
@@ -676,6 +706,7 @@ export default function Dashboard() {
   const [address, setAddress] = useState<string | null>(null);
   const [snap, setSnap] = useState<ChainSnapshot | null>(null);
   const [assetName, setAssetName] = useState<string | null>(null);
+  const [warrant, setWarrant] = useState<IssuedWarrant | null>(null);
   const live = address !== null;
 
   useEffect(() => {
@@ -761,6 +792,23 @@ export default function Dashboard() {
 
   const actions: Actions = {
     busy,
+    warrant,
+    issueWarrant: async (tn) => {
+      if (!address) return null;
+      if (!(tn > 0)) {
+        setToast({ k: "err", m: "Ingresá las toneladas depositadas antes de emitir el eWarrant." });
+        return null;
+      }
+      try {
+        const w = await issueEWarrant(address, tn);
+        setWarrant(w);
+        setToast({ k: "ok", m: `eWarrant ${w.ewarrant.id} emitido por el depositario: ${fmt(tn)} t de soja.` });
+        return w.hash;
+      } catch (e) {
+        setToast({ k: "err", m: (e as Error).message });
+        return null;
+      }
+    },
     fail: (m) => setToast({ k: "err", m }),
     deposit: (amt) => {
       if (live) return void runLive("deposit_liquidity", { investor: address, amount: toU(amt) });
@@ -793,7 +841,19 @@ export default function Dashboard() {
       });
     },
     borrow: ({ tn, principal, hash, days }) => {
-      if (live) return;
+      if (live && address) {
+        setBusy(true);
+        setToast({ k: "info", m: "El admin valida y cofirma; después firmá request_loan en tu billetera…" });
+        requestLoanLive(address, { principal, tonnes: tn, days, hash, ewarrant: warrant && warrant.hash === hash ? { ewarrant: warrant.ewarrant, signature: warrant.signature } : undefined })
+          .then(async (r) => {
+            setTxs((t) => [{ fn: "request_loan", hash: r.hash, at: new Date().toLocaleTimeString("es-AR") }, ...t].slice(0, 8));
+            setToast({ k: "ok", m: `request_loan() confirmada · préstamo #${r.loanId ?? "?"} a USD ${r.priceUsd}/t · tx ${short(r.hash, 8, 6)}`, href: explorer.tx(r.hash) });
+            await refresh(address);
+          })
+          .catch((e) => setToast({ k: "err", m: (e as Error).message }))
+          .finally(() => setBusy(false));
+        return;
+      }
       runDemo("request_loan", () => {
         setDPool((p) => ({ ...p, lent: p.lent + principal }));
         setDWallet((w) => w + principal);
@@ -828,8 +888,20 @@ export default function Dashboard() {
     const expired = view.ledger > l.expiry;
     const value = expired ? 0 : Math.round(l.tn * price);
     if (live) {
-      setLiq({ id, stage: 0, payload: "" });
-      const hash = await runLive("liquidate_collateral", { loan_id: BigInt(id), price_update: emptyBytes() });
+      let update: Uint8Array = emptyBytes();
+      let payload = "";
+      if (!expired) {
+        try {
+          const sp = await signedPrice(price);
+          update = sp.bytes;
+          payload = sp.hex;
+        } catch (e) {
+          setToast({ k: "err", m: (e as Error).message });
+          return;
+        }
+      }
+      setLiq({ id, stage: 1, payload });
+      const hash = await runLive("liquidate_collateral", { loan_id: BigInt(id), price_update: update });
       setLiq(null);
       if (hash) setEvents((e) => [{ id, value, price, expired, tx: hash, href: explorer.tx(hash) }, ...e]);
       return;
@@ -916,6 +988,57 @@ export default function Dashboard() {
     }
   };
 
+  const onFaucet = async () => {
+    if (!address) return;
+    setBusy(true);
+    setToast({ k: "info", m: "Pidiendo USDC de prueba al emisor…" });
+    try {
+      const r = await faucetUsdc(address);
+      setTxs((t) => [{ fn: "faucet_usdc", hash: r.hash, at: new Date().toLocaleTimeString("es-AR") }, ...t].slice(0, 8));
+      await refresh(address);
+      setToast({ k: "ok", m: `Recibiste ${usd(r.amount)} de prueba.`, href: explorer.tx(r.hash) });
+    } catch (e) {
+      setToast({ k: "err", m: (e as Error).message });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  /** Billetera de demo: crea la cuenta, la trustline y pide USDC sin extensión. */
+  const onBurner = async () => {
+    setBusy(true);
+    try {
+      const addr = await connectBurner();
+      setAddress(addr);
+      setToast({ k: "info", m: "Billetera de demo: fondeando con Friendbot…" });
+      let s = await readSnapshot(addr);
+      if (!s.account?.exists) {
+        await fundWithFriendbot(addr);
+        s = await readSnapshot(addr);
+      }
+      if (s.account && !s.account.trustline) {
+        setToast({ k: "info", m: "Billetera de demo: creando la trustline al USDC de prueba…" });
+        const h = await addUsdcTrustline(addr);
+        setTxs((t) => [{ fn: "change_trust", hash: h, at: new Date().toLocaleTimeString("es-AR") }, ...t].slice(0, 8));
+        s = await readSnapshot(addr);
+      }
+      if (s.account && (s.usdc ?? BigInt(0)) < toU(1000)) {
+        setToast({ k: "info", m: "Billetera de demo: pidiendo USDC de prueba…" });
+        const r = await faucetUsdc(addr);
+        setTxs((t) => [{ fn: "faucet_usdc", hash: r.hash, at: new Date().toLocaleTimeString("es-AR") }, ...t].slice(0, 8));
+        s = await readSnapshot(addr);
+      }
+      setSnap(s);
+      usdcAssetName().then(setAssetName, () => setAssetName(null));
+      setEvents([]);
+      setToast({ k: "ok", m: `Billetera de demo ${short(addr)} lista: operás contra el contrato real en testnet.`, href: explorer.account(addr) });
+    } catch (e) {
+      setToast({ k: "err", m: (e as Error).message });
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const onTrust = async () => {
     if (!address) return;
     setBusy(true);
@@ -973,8 +1096,13 @@ export default function Dashboard() {
           >
             Tema
           </button>
+          {!live && (
+            <button className="btn btn2" disabled={busy} onClick={onBurner} title="Genera una cuenta de testnet en este navegador, sin extensión">
+              Billetera de demo
+            </button>
+          )}
           <button className={live ? "btn btn2 mono" : "btn"} disabled={busy} onClick={onConnect}>
-            {live && address ? `${short(address)} · ${view.wallet === null ? "—" : usd(view.wallet)}` : "Conectar billetera"}
+            {live && address ? `${isBurner() ? "Demo · " : ""}${short(address)} · ${view.wallet === null ? "—" : usd(view.wallet)}` : "Conectar billetera"}
           </button>
         </div>
       </header>
@@ -991,7 +1119,7 @@ export default function Dashboard() {
       )}
       {live && !snap && <div className="card p-5 mb-4 mute">Leyendo el contrato en testnet…</div>}
       {live && address && snap?.account && (
-        <AccountSetup address={address} acct={snap.account} assetName={assetName} busy={busy} onFund={onFund} onTrust={onTrust} onRefresh={onRefreshAccount} onCopy={onCopy} />
+        <AccountSetup address={address} acct={snap.account} assetName={assetName} busy={busy} onFund={onFund} onTrust={onTrust} onRefresh={onRefreshAccount} onCopy={onCopy} onFaucet={onFaucet} />
       )}
       {tab === "inv" ? (
         <Investor v={view} a={actions} />

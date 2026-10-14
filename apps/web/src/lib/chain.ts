@@ -109,28 +109,69 @@ function kit() {
 export async function connectWallet(): Promise<string> {
   const k = await kit();
   const { address } = await k.authModal();
+  burnerSecret = null;
   return address as string;
 }
 
 export async function disconnectWallet(): Promise<void> {
+  if (burnerSecret) {
+    burnerSecret = null;
+    return;
+  }
   const k = await kit();
   await k.disconnect();
+}
+
+// ── Billetera de demo (sin extensión) ─────────────────────────────────
+// Clave de Testnet generada y guardada en este navegador. Sirve para probar el
+// protocolo sin instalar Freighter; nunca usar con fondos reales.
+
+const BURNER_KEY = "agrobank:testnet-burner";
+let burnerSecret: string | null = null;
+export const isBurner = () => burnerSecret !== null;
+
+export async function connectBurner(): Promise<string> {
+  const m = await import("@agrobank/client");
+  let s: string | null = null;
+  try {
+    s = localStorage.getItem(BURNER_KEY);
+  } catch {}
+  if (!s || !m.StrKey.isValidEd25519SecretSeed(s)) {
+    s = m.Keypair.random().secret();
+    try {
+      localStorage.setItem(BURNER_KEY, s);
+    } catch {}
+  }
+  burnerSecret = s;
+  return m.Keypair.fromSecret(s).publicKey();
+}
+
+/** Firma un sobre de transacción con la billetera conectada (extensión o demo). */
+async function signXdr(xdr: string, address: string): Promise<{ signedTxXdr: string; signerAddress?: string }> {
+  if (burnerSecret) {
+    const m = await import("@agrobank/client");
+    const kp = m.Keypair.fromSecret(burnerSecret);
+    const tx = m.TransactionBuilder.fromXDR(xdr, NETWORK_PASSPHRASE);
+    tx.sign(kp);
+    return { signedTxXdr: tx.toXDR(), signerAddress: kp.publicKey() };
+  }
+  const k = await kit();
+  return k.signTransaction(xdr, { networkPassphrase: NETWORK_PASSPHRASE, address });
 }
 
 // ── Contrato ───────────────────────────────────────────────────────────
 
 async function client(address?: string) {
   const m = await import("@agrobank/client");
-  const k = address ? await kit() : null;
   return new m.Client({
     contractId: CONTRACT_ID,
     networkPassphrase: NETWORK_PASSPHRASE,
     rpcUrl: RPC_URL,
     publicKey: address,
-    signTransaction: k
+    signTransaction: address
       ? // eslint-disable-next-line @typescript-eslint/no-explicit-any
         (async (xdr: string) => {
-          const r = await k.signTransaction(xdr, { networkPassphrase: NETWORK_PASSPHRASE, address });
+          const r = await signXdr(xdr, address);
           assertSigner(r?.signerAddress, address as string);
           return r;
         }) as any
@@ -191,6 +232,68 @@ export async function invoke(address: string, method: WriteMethod, args: Record<
   }
 }
 
+// ── Servicios del operador de Testnet (route handlers de /api) ─────────
+
+async function api<T>(path: string, init?: RequestInit): Promise<T> {
+  const r = await fetch(path, { ...init, headers: { "Content-Type": "application/json" } });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new ContractError(j.error || `El servidor respondió ${r.status}.`);
+  return j as T;
+}
+
+/** Pide USDC de prueba al emisor (la cuenta necesita la trustline). */
+export const faucetUsdc = (address: string) =>
+  api<{ hash: string; amount: number }>("/api/faucet", { method: "POST", body: JSON.stringify({ address }) });
+
+/** Update de precio firmado por el oráculo de Testnet; `px` simula un movimiento de mercado. */
+export async function signedPrice(px?: number): Promise<{ bytes: Uint8Array; hex: string; priceUsd: number }> {
+  const j = await api<{ hex: string; priceUsd: number }>(`/api/price${px === undefined ? "" : `?px=${px}`}`);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const B = (globalThis as any).Buffer;
+  const bytes = B ? B.from(j.hex, "hex") : Uint8Array.from(j.hex.match(/../g)!.map((h) => parseInt(h, 16)));
+  return { bytes, hex: j.hex, priceUsd: j.priceUsd };
+}
+
+/**
+ * request_loan con dos firmas: el servidor valida, firma el precio y cofirma como
+ * admin; acá el productor firma el sobre y lo envía. Devuelve hash y loan_id.
+ */
+export async function requestLoanLive(
+  address: string,
+  p: { principal: number; tonnes: number; days: number; hash: string; ewarrant?: unknown },
+): Promise<{ hash: string; loanId: number | null; priceUsd: number }> {
+  const j = await api<{ xdr: string; priceUsd: number }>("/api/loan", {
+    method: "POST",
+    body: JSON.stringify({ farmer: address, ...p }),
+  });
+  const m = await import("@agrobank/client");
+  const { signedTxXdr, signerAddress } = await signXdr(j.xdr, address);
+  assertSigner(signerAddress, address);
+  const server = new m.rpc.Server(RPC_URL);
+  const sent = await server.sendTransaction(m.TransactionBuilder.fromXDR(signedTxXdr, NETWORK_PASSPHRASE));
+  if (sent.status === "ERROR") throw new ContractError("La red rechazó la transacción de originación.");
+  for (let i = 0; i < 30; i++) {
+    const r = await server.getTransaction(sent.hash);
+    if (r.status === "SUCCESS") {
+      const v = r.returnValue ? m.scValToNative(r.returnValue) : null;
+      return { hash: sent.hash, loanId: v === null ? null : Number(v), priceUsd: j.priceUsd };
+    }
+    if (r.status === "FAILED") throw new ContractError("request_loan falló on-chain. Si tardaste más de 60 s en firmar, el precio venció (StalePrice): volvé a intentarlo.");
+    await new Promise((res) => setTimeout(res, 1500));
+  }
+  return { hash: sent.hash, loanId: null, priceUsd: j.priceUsd };
+}
+
+export interface IssuedWarrant {
+  ewarrant: { id: string; toneladas: number; depositario: string; emitido: string };
+  hash: string;
+  signature: string;
+}
+
+/** El depositario de Testnet emite un eWarrant firmado por las toneladas depositadas. */
+export const issueEWarrant = (farmer: string, toneladas: number) =>
+  api<IssuedWarrant>("/api/ewarrant", { method: "POST", body: JSON.stringify({ farmer, toneladas }) });
+
 // ── Cuenta del usuario en testnet ──────────────────────────────────────
 
 export interface AccountState {
@@ -199,7 +302,8 @@ export interface AccountState {
   usdc: bigint | null;
 }
 
-async function simulateSac(fn: string, args: unknown[] = []) {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function simulateSac(fn: string, args: any[] = []) {
   const m = await import("@agrobank/client");
   const server = new m.rpc.Server(RPC_URL);
   // fuente nula: la simulación no necesita una cuenta real
@@ -242,7 +346,6 @@ export async function fundWithFriendbot(address: string): Promise<void> {
 /** changeTrust clásico al USDC de prueba, firmado con la billetera. Devuelve el hash. */
 export async function addUsdcTrustline(address: string): Promise<string> {
   const m = await import("@agrobank/client");
-  const k = await kit();
   const name = await usdcAssetName();
   if (!name || !name.includes(":")) throw new Error("No pude leer CODE:ISSUER del contrato de USDC.");
   const [code, issuer] = name.split(":");
@@ -252,7 +355,7 @@ export async function addUsdcTrustline(address: string): Promise<string> {
     .addOperation(m.Operation.changeTrust({ asset: new m.Asset(code, issuer) }))
     .setTimeout(TX_TIMEOUT_SECS)
     .build();
-  const { signedTxXdr, signerAddress } = await k.signTransaction(tx.toXDR(), { networkPassphrase: NETWORK_PASSPHRASE, address });
+  const { signedTxXdr, signerAddress } = await signXdr(tx.toXDR(), address);
   assertSigner(signerAddress, address);
   const sent = await server.sendTransaction(m.TransactionBuilder.fromXDR(signedTxXdr, NETWORK_PASSPHRASE));
   if (sent.status === "ERROR") {

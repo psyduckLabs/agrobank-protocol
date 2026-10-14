@@ -1,3 +1,12 @@
 packages:
   - "apps/*"
   - "packages/*"
+
+# Scripts nativos opcionales de dependencias de billeteras: no hacen falta para el build.
+ignoredBuiltDependencies:
+  - "@reown/appkit"
+  - bufferutil
+  - secp256k1
+  - unrs-resolver
+  - utf-8-validate
+strictDepBuilds: false
