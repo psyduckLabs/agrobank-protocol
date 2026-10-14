@@ -95,7 +95,17 @@ pnpm indexer:test     # Postgres en Docker + migraciones + indexador + reconcili
 # con Supabase real: DATABASE_URL=<connection string> node apps/web/scripts/indexer.ts
 ```
 
-Reporte: [`docs/indexer-reconciliation.json`](docs/indexer-reconciliation.json). La landing muestra la actividad on-chain (`/api/events`) y este resultado.
+Reporte: [`docs/indexer-reconciliation.json`](docs/indexer-reconciliation.json).
+
+**En un proyecto Supabase real:** las migraciones y el snapshot del indexador ([`supabase/seed/testnet_snapshot.sql`](supabase/seed/testnet_snapshot.sql)) se cargaron en el proyecto `agrobank` (región São Paulo) y la reconciliación se corrió ahí mismo en el SQL Editor:
+
+| Eventos | Préstamos | Repagados | Liquidados | Precios auditados | Diferencias SQL vs. on-chain | `total_lent` base = on-chain | Tablas con RLS |
+|---:|---:|---:|---:|---:|---:|---|---:|
+| 71 | 16 | 8 | 7 | 23 | **0** | 3.600.000.000.000 = 3.600.000.000.000 | 8 |
+
+![Reconciliación en Supabase](docs/screenshots/09-supabase-reconciliacion.jpg)
+
+Detalle: [`docs/supabase-cloud-proof.json`](docs/supabase-cloud-proof.json). Para correr el indexador en continuo contra Supabase: `bash scripts/index-supabase.sh` con la connection string en `/root/.config/agrobank/supabase.env`. La landing muestra la actividad on-chain (`/api/events`) y este resultado.
 
 ### CI
 
