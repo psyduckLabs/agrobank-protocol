@@ -105,7 +105,11 @@ Reporte: [`docs/indexer-reconciliation.json`](docs/indexer-reconciliation.json).
 
 ![Reconciliación en Supabase](docs/screenshots/09-supabase-reconciliacion.jpg)
 
-Detalle: [`docs/supabase-cloud-proof.json`](docs/supabase-cloud-proof.json). Para correr el indexador en continuo contra Supabase: `bash scripts/index-supabase.sh` con la connection string en `/root/.config/agrobank/supabase.env`. La landing muestra la actividad on-chain (`/api/events`) y este resultado.
+Detalle: [`docs/supabase-cloud-proof.json`](docs/supabase-cloud-proof.json).
+
+**Indexado continuo en Supabase:** el indexador corre como Edge Function dentro del proyecto ([`supabase/functions/indexer`](supabase/functions/indexer/index.ts)), conectada a la base con `SUPABASE_DB_URL`, que Supabase inyecta en el entorno, sin claves en el repo. `pg_cron` la dispara cada 5 minutos (`agrobank-indexer`). Prueba: un depósito hecho on-chain a las 05:21 UTC ([2651146292…ff91](https://stellar.expert/explorer/testnet/tx/2651146292bacae332910c5097b1270fc5adce2e8c451f59ef0101971537ff91)) apareció solo en `chain_events` con la corrida de las 05:25, sin intervención manual.
+
+![Cron del indexador en Supabase](docs/screenshots/10-supabase-cron-indexer.jpg) Alternativa fuera de Supabase: `bash scripts/index-supabase.sh` con la connection string en `/root/.config/agrobank/supabase.env`. La landing muestra la actividad on-chain (`/api/events`) y este resultado.
 
 ### CI
 
