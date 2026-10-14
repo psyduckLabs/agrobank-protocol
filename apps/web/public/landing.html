@@ -1,0 +1,771 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>AgroBank · Crédito agrícola on-chain</title>
+<meta name="description" content="AgroBank convierte un eWarrant de soja en garantía on-chain: crédito en USDC para productores argentinos sobre Stellar Soroban, con precio de Pyth y reparto transparente.">
+<meta property="og:title" content="AgroBank · Crédito en dólares respaldado por soja">
+<meta property="og:description" content="USDC contra eWarrants de soja (Decreto 640/2024) sobre Stellar Soroban. 130% de colateral, 12% TNA para el pool y spread visible.">
+<meta property="og:image" content="https://upload.wikimedia.org/wikipedia/commons/thumb/e/e6/Sembrado_de_soja_en_argentina.jpg/1280px-Sembrado_de_soja_en_argentina.jpg">
+<meta property="og:type" content="website">
+<meta name="theme-color" content="#FBFAF6">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="preconnect" href="https://upload.wikimedia.org">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500&display=swap">
+<style>
+:root{
+  --paper:#FBFAF6;--sand:#F2EFE6;--ink:#141413;--ink2:#3A3934;--mute:#706E66;--line:#E2DED3;--line2:#CFCABC;
+  --field:#1E4D33;--fieldbg:#E3ECE4;--soy:#A8741A;--soybg:#F4EAD3;--bad:#A63A2A;--badbg:#F6E1DB;
+  --serif:'Instrument Serif',Georgia,'Times New Roman',serif;
+  --sans:'Geist',system-ui,-apple-system,'Segoe UI',sans-serif;
+  --mono:'Geist Mono',ui-monospace,Menlo,monospace;
+  --wrap:1240px;--gut:40px;color-scheme:light;
+}
+@media (max-width:900px){:root{--gut:24px}}
+@media (max-width:560px){:root{--gut:16px}}
+*,*::before,*::after{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%;scroll-behavior:smooth;scroll-padding-top:72px}
+body{margin:0;background:var(--paper);color:var(--ink);font:400 16px/1.6 var(--sans);overflow-x:hidden;-webkit-font-smoothing:antialiased}
+h1,h2,h3{font-family:var(--serif);font-weight:400;letter-spacing:-.015em;line-height:1.02;margin:0}
+p{margin:0}
+a{color:inherit}
+code,.mono{font-family:var(--mono);font-size:.88em}
+.num{font-variant-numeric:tabular-nums}
+.wrap{max-width:var(--wrap);margin:0 auto;padding:0 var(--gut)}
+:focus-visible{outline:2px solid var(--field);outline-offset:3px}
+img{display:block;max-width:100%}
+
+/* Barra superior */
+.notice{background:var(--ink);color:#E9E7E0;font-size:13.5px;text-align:center;padding:9px var(--gut)}
+.notice a{color:#fff;font-weight:500;text-underline-offset:3px}
+
+/* Nav */
+.nav{position:sticky;top:0;z-index:40;background:rgba(251,250,246,.92);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border-bottom:1px solid var(--line)}
+.nav .wrap{display:flex;align-items:center;height:64px;gap:36px}
+.logo{display:flex;align-items:center;gap:9px;text-decoration:none;font:400 27px/1 var(--serif);letter-spacing:-.01em}
+.logo svg{width:22px;height:22px}
+.nav ul{display:flex;gap:28px;list-style:none;margin:0;padding:0;font-size:14.5px}
+.nav ul a{text-decoration:none;color:var(--ink2)}
+.nav ul a:hover{color:var(--ink)}
+.nav .right{margin-left:auto;display:flex;gap:10px}
+@media (max-width:920px){.nav ul{display:none}.nav .right .btn.ghost{display:none}}
+
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:10px;height:46px;padding:0 22px;border-radius:6px;font:500 15px/1 var(--sans);text-decoration:none;border:1px solid transparent;cursor:pointer;white-space:nowrap}
+.btn.dark{background:var(--ink);color:var(--paper)}
+.btn.dark:hover{background:#2B2A27}
+.btn.ghost{background:var(--sand);color:var(--ink)}
+.btn.ghost:hover{background:#EAE6DA}
+.btn.light{background:var(--paper);color:var(--ink)}
+.btn.sm{height:38px;padding:0 16px;font-size:14px}
+.link{font-weight:500;text-underline-offset:4px;text-decoration-thickness:1px}
+
+/* Hero */
+.hero{display:grid;grid-template-columns:1fr 1fr;min-height:calc(100vh - 101px);max-height:860px;border-bottom:1px solid var(--line)}
+.hero-copy{padding:88px var(--gut) 56px max(var(--gut),calc((100vw - var(--wrap))/2 + var(--gut)));display:flex;flex-direction:column}
+.hero h1{font-size:clamp(52px,6.6vw,96px);line-height:.98}
+.hero h1 em{font-style:italic;color:var(--field)}
+.hero .lede{font-size:clamp(17px,1.4vw,19px);color:var(--ink2);max-width:30em;margin-top:28px}
+.hero .ctas{display:flex;gap:22px;align-items:center;margin-top:36px;flex-wrap:wrap}
+.hero-meta{margin-top:auto;padding-top:56px;display:flex;gap:28px;flex-wrap:wrap;font-size:13.5px;color:var(--mute)}
+.hero-meta b{display:block;color:var(--ink);font-weight:500;font-size:14px}
+.hero-photo{position:relative;background:#2c3a2a;overflow:hidden}
+.hero-photo img{width:100%;height:100%;object-fit:cover}
+.credit{position:absolute;right:12px;bottom:10px;font-size:11px;color:rgba(255,255,255,.75);text-shadow:0 1px 2px rgba(0,0,0,.5)}
+.credit a{color:inherit}
+.ticket{position:absolute;right:28px;top:28px;width:min(330px,calc(100% - 56px));background:var(--paper);border-radius:8px;padding:18px 20px;font-size:13.5px}
+.ticket .t-top{display:flex;justify-content:space-between;align-items:baseline;padding-bottom:10px;border-bottom:1px solid var(--line);margin-bottom:8px}
+.ticket .t-top span:first-child{font:400 21px/1 var(--serif)}
+.ticket dl{margin:0;display:grid;gap:5px}
+.ticket dl div{display:flex;justify-content:space-between}
+.ticket dt{color:var(--mute)}
+.ticket dd{margin:0;font-family:var(--mono);font-size:12.5px}
+.ticket small{display:block;color:var(--mute);font-size:11.5px;margin-top:10px}
+.tag{font:500 11.5px/1 var(--mono);padding:5px 8px;border-radius:4px;background:var(--fieldbg);color:var(--field)}
+.tag.bad{background:var(--badbg);color:var(--bad)}
+@media (max-width:900px){.hero{grid-template-columns:1fr;min-height:0;max-height:none}.hero-copy{padding:56px var(--gut) 40px}.hero-photo{height:440px}.hero-meta{padding-top:40px}}
+
+/* Cifras */
+.figures{border-bottom:1px solid var(--line)}
+.figures .wrap{display:grid;grid-template-columns:repeat(4,1fr)}
+.fig{padding:40px 28px 36px;border-left:1px solid var(--line)}
+.fig:first-child{border-left:0;padding-left:0}
+.fig span{display:block;font-size:14px;color:var(--mute)}
+.fig b{display:block;font:400 clamp(48px,5.2vw,72px)/1 var(--serif);letter-spacing:-.02em;margin-top:14px}
+.fig b small{font-size:.42em;margin-left:6px;color:var(--mute)}
+@media (max-width:900px){.figures .wrap{grid-template-columns:1fr 1fr}.fig:nth-child(3){border-left:0;padding-left:0}.fig:nth-child(n+3){border-top:1px solid var(--line)}.fig{padding:28px 20px}}
+
+/* Secciones */
+.sec{padding:128px 0 0}
+@media (max-width:700px){.sec{padding-top:88px}}
+.label{font-size:14px;color:var(--mute);margin-bottom:20px;display:flex;gap:10px;align-items:center}
+.label::before{content:"";width:18px;height:1px;background:var(--line2)}
+.h2{font-size:clamp(40px,4.8vw,66px);max-width:13em}
+.intro{font-size:18px;color:var(--ink2);max-width:36em;margin-top:22px}
+.split{display:grid;grid-template-columns:5fr 7fr;gap:64px;align-items:start}
+@media (max-width:960px){.split{grid-template-columns:1fr;gap:40px}}
+
+/* Tablas */
+.tbl{width:100%;border-collapse:collapse;font-size:15px}
+.tbl th{font-weight:400;color:var(--mute);font-size:13px;text-align:left;padding:0 16px 12px 0;border-bottom:1px solid var(--line2)}
+.tbl td{padding:18px 16px 18px 0;border-bottom:1px solid var(--line);vertical-align:top}
+.tbl td:first-child{color:var(--mute);width:28%}
+.tbl .yes{color:var(--ink)}
+.tbl .no{color:var(--mute)}
+.tblwrap{overflow-x:auto;-webkit-overflow-scrolling:touch}
+@media (max-width:560px){.tbl.stack thead{display:none}.tbl.stack tr{display:grid;grid-template-columns:1fr;padding:14px 0;border-bottom:1px solid var(--line)}.tbl.stack td{border:0;padding:3px 0;width:auto!important}.tbl.stack td:first-child{font-size:13px}.tbl.stack td:nth-child(2)::before{content:"Hoy: ";color:var(--mute)}.tbl.stack td:nth-child(3)::before{content:"AgroBank: ";color:var(--field)}}
+
+/* Banda con foto */
+.band{position:relative;margin-top:128px;height:min(78vh,720px);min-height:460px;overflow:hidden;background:#3b3324}
+.band img{width:100%;height:100%;object-fit:cover}
+.band::after{content:"";position:absolute;inset:0;background:linear-gradient(90deg,rgba(15,14,10,.72) 0%,rgba(15,14,10,.25) 55%,rgba(15,14,10,0) 100%)}
+.band .wrap{position:absolute;inset:0;z-index:2;display:flex;flex-direction:column;justify-content:flex-end;padding-bottom:64px;left:0;right:0;color:#F7F5EF}
+.band h2{font-size:clamp(40px,5vw,72px);max-width:11em}
+.band p{max-width:32em;margin-top:20px;font-size:17px;color:rgba(247,245,239,.85)}
+@media (max-width:700px){.band{margin-top:88px}.band::after{background:linear-gradient(0deg,rgba(15,14,10,.8) 0%,rgba(15,14,10,.2) 70%)}}
+
+/* Pasos */
+.steps{margin-top:64px;border-top:1px solid var(--ink)}
+.step{display:grid;grid-template-columns:80px 1.1fr 1.6fr 1fr;gap:32px;padding:32px 0;border-bottom:1px solid var(--line);align-items:baseline}
+.step .n{font:400 15px var(--mono);color:var(--mute)}
+.step h3{font-size:32px}
+.step p{color:var(--ink2)}
+.step code{color:var(--mute);text-align:right;font-size:13px}
+@media (max-width:960px){.step{grid-template-columns:48px 1fr;gap:10px 16px}.step p,.step code{grid-column:2}.step code{text-align:left}.step h3{font-size:28px}}
+
+/* Simulador */
+.sim{display:grid;grid-template-columns:1fr 1fr;margin-top:64px;border:1px solid var(--line2);border-radius:8px;overflow:hidden;background:#fff}
+@media (max-width:960px){.sim{grid-template-columns:1fr}}
+.sim-in{padding:36px;border-right:1px solid var(--line)}
+.sim-out{padding:36px;background:var(--sand)}
+@media (max-width:960px){.sim-in{border-right:0;border-bottom:1px solid var(--line)}}
+@media (max-width:560px){.sim-in,.sim-out{padding:22px}}
+.field+.field{margin-top:30px}
+.field-top{display:flex;justify-content:space-between;align-items:baseline;gap:12px;margin-bottom:10px}
+.field label{font-size:15px;font-weight:500}
+.field .val{display:flex;align-items:baseline;gap:6px;border-bottom:1px solid var(--line2)}
+.field .val input{width:104px;border:0;background:transparent;font:400 26px/1.2 var(--serif);text-align:right;color:var(--ink);outline:none;padding:0;-moz-appearance:textfield;appearance:textfield}
+.field .val input::-webkit-outer-spin-button,.field .val input::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
+.field .val span{font-size:13px;color:var(--mute)}
+.field .hint{font-size:13px;color:var(--mute);margin-top:8px}
+input[type=range]{-webkit-appearance:none;appearance:none;width:100%;height:24px;background:transparent;margin:0;cursor:pointer;--p:50%}
+input[type=range]::-webkit-slider-runnable-track{height:2px;background:linear-gradient(to right,var(--ink) var(--p),var(--line2) var(--p))}
+input[type=range]::-moz-range-track{height:2px;background:var(--line2)}
+input[type=range]::-moz-range-progress{height:2px;background:var(--ink)}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:16px;height:16px;border-radius:50%;background:var(--ink);margin-top:-7px;border:3px solid #fff;box-shadow:0 0 0 1px var(--ink)}
+input[type=range]::-moz-range-thumb{width:12px;height:12px;border-radius:50%;background:var(--ink);border:3px solid #fff;box-shadow:0 0 0 1px var(--ink)}
+.verdict{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
+.verdict h3{font-size:30px}
+.out-grid{display:grid;grid-template-columns:1fr 1fr;margin-top:24px;border-top:1px solid var(--line2)}
+.out-grid div{padding:16px 0;border-bottom:1px solid var(--line2)}
+.out-grid div:nth-child(odd){padding-right:16px;border-right:1px solid var(--line2)}
+.out-grid div:nth-child(even){padding-left:16px}
+.out-grid span{display:block;font-size:13px;color:var(--mute)}
+.out-grid b{display:block;font:400 30px/1.15 var(--serif);margin-top:4px;letter-spacing:-.01em}
+.ltv{margin-top:22px}
+.ltv-top{display:flex;justify-content:space-between;font-size:13px;color:var(--mute);margin-bottom:8px}
+.ltv-top b{font:500 13px var(--mono);color:var(--ink)}
+.ltv-bar{position:relative;height:8px;background:#fff;border:1px solid var(--line2);border-radius:2px}
+.ltv-fill{position:absolute;inset:0 auto 0 0;background:var(--field);transition:width .25s}
+.ltv-max{position:absolute;top:-6px;bottom:-6px;width:1px;background:var(--ink)}
+.repay{margin-top:26px}
+.repay h4{font:500 14px var(--sans);margin:0 0 6px}
+.repay dl{margin:0}
+.repay dl div{display:flex;justify-content:space-between;gap:16px;padding:9px 0;border-bottom:1px solid var(--line2);font-size:14.5px}
+.repay dl div:last-child{border-bottom:0;font-weight:500}
+.repay dt{color:var(--ink2)}
+.repay dd{margin:0;font-family:var(--mono);font-size:13.5px}
+.note{font-size:13.5px;color:var(--mute);margin-top:16px}
+
+/* Split atómico */
+.flow{margin-top:56px}
+.flow-bar{display:flex;height:64px;border-radius:4px;overflow:hidden}
+.flow-bar div{display:flex;align-items:center;padding:0 18px;font:500 13.5px var(--mono);color:#fff;white-space:nowrap}
+.flow-bar .a{background:var(--field);flex:100}
+.flow-bar .b{background:#3F7A56;flex:12}
+.flow-bar .c{background:var(--soy);flex:6}
+.flow-legend{display:grid;grid-template-columns:100fr 12fr 6fr;margin-top:14px;font-size:13.5px;color:var(--mute)}
+.flow-legend div{padding-right:10px}
+.flow-legend b{display:block;color:var(--ink);font-weight:500}
+@media (max-width:700px){.flow-bar div{font-size:0;padding:0}.flow-legend{grid-template-columns:1fr;gap:10px}}
+.facts{display:grid;grid-template-columns:repeat(3,1fr);gap:40px;margin-top:56px;padding-top:28px;border-top:1px solid var(--line)}
+.facts h3{font-size:26px;margin-bottom:10px}
+.facts p{color:var(--ink2);font-size:15px}
+@media (max-width:860px){.facts{grid-template-columns:1fr;gap:28px}}
+
+/* Roles */
+.roles{display:grid;grid-template-columns:repeat(3,1fr);gap:0;margin-top:64px;border-top:1px solid var(--ink)}
+.role{padding:28px 32px 8px 0}
+.role+.role{padding-left:32px;border-left:1px solid var(--line)}
+.role h3{font-size:40px}
+.role .who{color:var(--mute);font-size:14px;margin-top:6px}
+.role ul{list-style:none;margin:24px 0 0;padding:0}
+.role li{padding:12px 0;border-top:1px solid var(--line);font-size:15px;color:var(--ink2)}
+@media (max-width:860px){.roles{grid-template-columns:1fr}.role,.role+.role{padding:28px 0 0;border-left:0}.role+.role{border-top:1px solid var(--line);margin-top:28px}}
+
+/* Seguridad */
+.sev{font:500 11.5px/1 var(--mono);padding:4px 7px;border-radius:3px;white-space:nowrap}
+.sev.hi{background:var(--badbg);color:var(--bad)}
+.sev.md{background:var(--soybg);color:var(--soy)}
+.sec-tables{display:grid;grid-template-columns:1.25fr 1fr;gap:64px;margin-top:64px}
+.sec-tables h3{font-size:30px;margin-bottom:24px}
+@media (max-width:960px){.sec-tables{grid-template-columns:1fr;gap:56px}}
+.tbl.ctl td:first-child{color:var(--ink);font-weight:500;width:34%}
+.tbl.ctl td:last-child{text-align:right;color:var(--mute);font-family:var(--mono);font-size:12.5px;white-space:nowrap;padding-right:0}
+.tbl.risk td:first-child{width:auto}
+.tbl.risk td small{display:block;color:var(--mute);font-size:13.5px;margin-top:3px}
+.tbl.risk td:first-child{color:var(--ink)}
+.tbl.risk td:last-child{text-align:right;padding-right:0;width:1%}
+
+/* Legal */
+.legal{display:grid;grid-template-columns:repeat(3,1fr);margin-top:64px;border-top:1px solid var(--ink)}
+.law{padding:28px 32px 0 0}
+.law+.law{padding-left:32px;border-left:1px solid var(--line)}
+.law .yr{font:400 84px/1 var(--serif);letter-spacing:-.03em}
+.law.key .yr{color:var(--field)}
+.law h3{font:500 16px var(--sans);margin-top:18px}
+.law p{color:var(--ink2);font-size:15px;margin-top:6px}
+.caveat{margin-top:48px;padding:22px 24px;background:var(--sand);border-left:2px solid var(--soy);font-size:15px;color:var(--ink2);max-width:58em}
+@media (max-width:860px){.legal{grid-template-columns:1fr}.law,.law+.law{padding:24px 0 0;border-left:0}.law+.law{border-top:1px solid var(--line);margin-top:24px}.law .yr{font-size:64px}}
+
+/* Demo */
+.demo{display:grid;grid-template-columns:4fr 8fr;gap:56px;align-items:end;margin-top:0}
+.demo ol{list-style:none;margin:28px 0 32px;padding:0;counter-reset:d}
+.demo li{padding:12px 0;border-top:1px solid var(--line);font-size:15px;color:var(--ink2);display:grid;grid-template-columns:28px 1fr}
+.demo li::before{counter-increment:d;content:counter(d,decimal-leading-zero);font:400 13px/1.6 var(--mono);color:var(--mute)}
+.demo li b{color:var(--ink);font-weight:500}
+.video{background:#111;border-radius:6px;overflow:hidden;aspect-ratio:16/10}
+.video video{width:100%;height:100%;display:block;object-fit:contain;background:#0e0e0d}
+@media (max-width:960px){.demo{grid-template-columns:1fr;gap:32px}}
+
+/* En vivo */
+.live-grid{display:grid;grid-template-columns:repeat(4,1fr);margin-top:56px;border-top:1px solid var(--ink)}
+.live-grid div{padding:24px 24px 4px 0}
+.live-grid div+div{padding-left:24px;border-left:1px solid var(--line)}
+.live-grid span{display:block;font-size:13.5px;color:var(--mute)}
+.live-grid b{display:block;font:400 clamp(36px,3.6vw,52px)/1.05 var(--serif);margin-top:10px;letter-spacing:-.02em}
+.live-grid small{display:block;color:var(--mute);font-size:13px;margin-top:6px}
+@media (max-width:860px){.live-grid{grid-template-columns:1fr 1fr}.live-grid div:nth-child(3){padding-left:0;border-left:0}.live-grid div:nth-child(n+3){border-top:1px solid var(--line)}}
+.tbl.addr td:first-child{width:30%}
+.tbl.addr a{word-break:break-all;color:var(--field)}
+.ok-tag{background:var(--fieldbg);color:var(--field);font-size:12px;vertical-align:middle;margin-left:8px}
+#proof-table a{color:var(--field);font-family:var(--mono);font-size:12.5px}
+
+/* Roadmap */
+.tbl.road td:first-child{width:12%;font-family:var(--mono);font-size:13px}
+.tbl.road td:nth-child(2){width:26%;font:400 22px/1.2 var(--serif);color:var(--ink)}
+.tbl.road td:nth-child(3){color:var(--ink2)}
+.tbl.road tr.now td{background:var(--fieldbg)}
+.tbl.road tr.now td:first-child{color:var(--field);padding-left:12px}
+.tbl.road td:last-child{color:var(--mute);font-size:14px}
+.stackline{margin-top:40px;font-size:14px;color:var(--mute);display:flex;flex-wrap:wrap;gap:8px 28px}
+.stackline b{color:var(--ink);font-weight:500}
+
+/* Cierre */
+.closing{position:relative;margin-top:128px;min-height:560px;overflow:hidden;background:#2a2516;color:#F7F5EF}
+.closing img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.closing::after{content:"";position:absolute;inset:0;background:rgba(14,13,9,.58)}
+.closing .wrap{position:relative;z-index:2;padding-top:120px;padding-bottom:120px}
+.closing h2{font-size:clamp(44px,6vw,88px);max-width:10em}
+.closing p{max-width:30em;margin-top:22px;font-size:18px;color:rgba(247,245,239,.85)}
+.closing .ctas{display:flex;gap:22px;align-items:center;margin-top:36px;flex-wrap:wrap}
+.closing .link{color:#fff}
+.closing .credit{right:16px;bottom:12px}
+
+footer{background:var(--ink);color:#B9B6AC;font-size:14px;padding:64px 0 calc(32px + env(safe-area-inset-bottom,0px))}
+.foot{display:grid;grid-template-columns:2fr 1fr 1fr 1fr;gap:40px}
+.foot .logo{color:#F7F5EF}
+.foot h4{font:500 13px var(--sans);color:#F7F5EF;margin:0 0 14px}
+.foot ul{list-style:none;margin:0;padding:0;display:grid;gap:8px}
+.foot a{text-decoration:none}
+.foot a:hover{color:#fff}
+.legalese{margin-top:56px;padding-top:24px;border-top:1px solid #33322E;font-size:12.5px;color:#8C897F;display:grid;gap:8px}
+@media (max-width:860px){.foot{grid-template-columns:1fr 1fr}.foot>div:first-child{grid-column:1/-1}}
+</style>
+</head>
+<body>
+
+<div class="notice">AgroBank funciona en Stellar Testnet. <a href="/app">Abrí la app y operá con una billetera de demo, sin extensión</a></div>
+
+<header class="nav">
+  <div class="wrap">
+    <a class="logo" href="#top" aria-label="AgroBank, inicio">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 22V9" stroke="#141413" stroke-width="1.6" stroke-linecap="round" fill="none"/><path d="M12 12c0-4.2 2.7-7 7.5-7.4.2 4.6-2.7 7.4-7.5 7.4z" fill="#1E4D33"/><path d="M12 17c0-3.9-2.5-6.4-7-6.8-.2 4.2 2.5 6.8 7 6.8z" fill="#A8741A"/></svg>
+      AgroBank
+    </a>
+    <ul>
+      <li><a href="#como-funciona">Cómo funciona</a></li>
+      <li><a href="#simulador">Simulador</a></li>
+      <li><a href="#seguridad">Seguridad</a></li>
+      <li><a href="#pruebas">Pruebas</a></li>
+      <li><a href="https://github.com/psyduckLabs/agrobank-protocol/tree/main/docs" target="_blank" rel="noopener">Documentación</a></li>
+    </ul>
+    <div class="right">
+      <a class="btn ghost sm" href="https://github.com/psyduckLabs/agrobank-protocol" target="_blank" rel="noopener">GitHub</a>
+      <a class="btn dark sm" href="/app">Abrir la app</a>
+    </div>
+  </div>
+</header>
+
+<main id="top">
+<section class="hero">
+  <div class="hero-copy">
+    <h1>Crédito en dólares, respaldado por <em>soja.</em></h1>
+    <p class="lede">AgroBank convierte un eWarrant de soja en garantía on-chain. El productor recibe USDC sin vender el grano, el inversor cobra lo que efectivamente se repaga, y cada reparto queda registrado en Stellar.</p>
+    <div class="ctas">
+      <a class="btn dark" href="/app">Abrir la app en Testnet</a>
+      <a class="link" href="#pruebas">Ver pruebas on-chain</a>
+    </div>
+    <div class="hero-meta">
+      <div><b>Stellar Soroban</b>soroban-sdk v28</div>
+      <div><b>Pyth Pro</b>precio verificado on-chain</div>
+      <div><b>Decreto 640/2024</b>eWarrant digital</div>
+    </div>
+  </div>
+  <div class="hero-photo">
+    <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/e/e6/Sembrado_de_soja_en_argentina.jpg/1920px-Sembrado_de_soja_en_argentina.jpg" alt="Sembrado de soja en Argentina al atardecer" fetchpriority="high">
+    <div class="ticket" aria-label="Ejemplo de crédito">
+      <div class="t-top"><span>Crédito #0</span><span class="tag">Active</span></div>
+      <dl>
+        <div><dt>Colateral</dt><dd>500 t de soja</dd></div>
+        <div><dt>Precio Pyth</dt><dd>USD 380/t</dd></div>
+        <div><dt>Préstamo</dt><dd>120.000 USDC</dd></div>
+        <div><dt>Cobertura</dt><dd>158,3%</dd></div>
+      </dl>
+      <small>Ejemplo ilustrativo con los parámetros del contrato.</small>
+    </div>
+    <p class="credit">Foto: <a href="https://commons.wikimedia.org/wiki/File:Sembrado_de_soja_en_argentina.jpg" target="_blank" rel="noopener">Alfonso</a>, CC BY-SA 3.0</p>
+  </div>
+</section>
+
+<section class="figures" aria-label="Parámetros del protocolo">
+  <div class="wrap">
+    <div class="fig"><span>Colateral mínimo</span><b class="num">130<small>%</small></b></div>
+    <div class="fig"><span>Rendimiento del pool</span><b class="num">12<small>% TNA</small></b></div>
+    <div class="fig"><span>Spread de tesorería</span><b class="num">6<small>%</small></b></div>
+    <div class="fig"><span>Antigüedad máxima del precio</span><b class="num">60<small>s</small></b></div>
+  </div>
+</section>
+
+
+<section class="sec" id="en-vivo" style="padding-top:96px">
+  <div class="wrap">
+    <div class="split" style="align-items:end">
+      <div>
+        <p class="label">En vivo en Stellar Testnet</p>
+        <h2 class="h2">El contrato ya está desplegado y operando.</h2>
+      </div>
+      <p class="intro">Estos números se leen del contrato en cada visita. Cualquier persona puede abrir la app, generar una billetera de prueba y pedir un crédito real en Testnet.</p>
+    </div>
+    <div class="live-grid">
+      <div><span>Liquidez del pool</span><b id="lv-pool" class="num">…</b><small>USDC de prueba</small></div>
+      <div><span>Prestado a productores</span><b id="lv-lent" class="num">…</b><small id="lv-util">utilización</small></div>
+      <div><span>Créditos originados</span><b id="lv-loans" class="num">…</b><small id="lv-split">activos · repagados · liquidados</small></div>
+      <div><span>Ledger actual</span><b id="lv-ledger" class="num">…</b><small id="lv-at">Testnet</small></div>
+    </div>
+    <div class="tblwrap" style="margin-top:40px"><table class="tbl addr">
+      <tbody>
+        <tr><td>Contrato AgroBank</td><td><a id="lv-c" class="mono" target="_blank" rel="noopener" href="#">…</a></td></tr>
+        <tr><td>Verificador de precios</td><td><a id="lv-v" class="mono" target="_blank" rel="noopener" href="#">…</a></td></tr>
+        <tr><td>USDC de prueba (SAC)</td><td><a id="lv-u" class="mono" target="_blank" rel="noopener" href="#">…</a></td></tr>
+        <tr><td>Tesorería (spread 6%)</td><td><a id="lv-t" class="mono" target="_blank" rel="noopener" href="#">…</a></td></tr>
+      </tbody>
+    </table></div>
+    <p class="note" id="lv-err" hidden>No pude leer el contrato ahora mismo. Probá recargar en unos segundos.</p>
+  </div>
+</section>
+
+<section class="sec" id="problema">
+  <div class="wrap split">
+    <div>
+      <p class="label">El problema</p>
+      <h2 class="h2">El campo financia la economía con crédito caro.</h2>
+      <p class="intro">Un productor con soja en el silo tiene un activo en dólares, pero para financiarse depende de tasas en pesos, warrants en papel e intermediarios cerrados.</p>
+    </div>
+    <div class="tblwrap">
+      <table class="tbl stack">
+        <thead><tr><th></th><th>Hoy</th><th>Con AgroBank</th></tr></thead>
+        <tbody>
+          <tr><td>Crédito</td><td class="no">Tasas altas en pesos.</td><td class="yes">USDC respaldado por soja almacenada.</td></tr>
+          <tr><td>Garantía</td><td class="no">Warrant en papel y circuito de warranteras.</td><td class="yes">eWarrant digital bloqueado on-chain por su hash.</td></tr>
+          <tr><td>Fondeo</td><td class="no">Bancos e intermediarios cerrados.</td><td class="yes">Pool abierto que cobra el 12% TNA de lo repagado.</td></tr>
+          <tr><td>Transparencia</td><td class="no">Spread opaco.</td><td class="yes">Spread del 6% separado en el mismo repago.</td></tr>
+          <tr><td>Precio</td><td class="no">Tasaciones manuales.</td><td class="yes">Pyth verificado on-chain, con 60 s de antigüedad máxima.</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+<section class="band" aria-label="El grano queda en el silo">
+  <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/b/b7/Silo_Bolsa_Produ%C3%A7%C3%A3o_de_Milho_-_panoramio.jpg/1920px-Silo_Bolsa_Produ%C3%A7%C3%A3o_de_Milho_-_panoramio.jpg" alt="Silo bolsa sobre un camino de tierra colorada" loading="lazy">
+  <div class="wrap">
+    <h2>El grano queda en el silo. La garantía viaja por la red.</h2>
+    <p>La custodia física sigue en manos de un depositario. On-chain viaja solo la huella del eWarrant: su hash SHA-256, que prueba integridad y evita que se pignore dos veces.</p>
+  </div>
+  <p class="credit">Foto: <a href="https://commons.wikimedia.org/wiki/File:Silo_Bolsa_Produ%C3%A7%C3%A3o_de_Milho_-_panoramio.jpg" target="_blank" rel="noopener">Darliton</a>, CC BY-SA 3.0</p>
+</section>
+
+<section class="sec" id="como-funciona">
+  <div class="wrap">
+    <p class="label">Cómo funciona</p>
+    <h2 class="h2">Del silo a la billetera, en cuatro pasos.</h2>
+    <div class="steps">
+      <div class="step"><span class="n">01</span><h3>Depósito y eWarrant</h3><p>La soja entra a un depositario y se emite el eWarrant digital. El contrato lo identifica por su hash, sin exponer el documento.</p><code>e_warrant_hash</code></div>
+      <div class="step"><span class="n">02</span><h3>Pedido de USDC</h3><p>El contrato lee el precio de Pyth, exige 130% de cobertura y bloquea el hash. El admin cofirma después de validar el eWarrant.</p><code>request_loan</code></div>
+      <div class="step"><span class="n">03</span><h3>Repago atómico</h3><p>Capital más 12% vuelven al pool y el 6% va a tesorería, en una sola transacción. Si una transferencia falla, se revierte todo.</p><code>repay_loan</code></div>
+      <div class="step"><span class="n">04</span><h3>Liquidación</h3><p>Si el crédito vence o la cobertura cae bajo 130%, cualquier keeper lo pasa a Defaulted. El grano se ejecuta según la Ley 9.643, fuera de la cadena.</p><code>liquidate_collateral</code></div>
+    </div>
+  </div>
+</section>
+
+<section class="sec" id="simulador">
+  <div class="wrap">
+    <div class="split" style="align-items:end">
+      <div>
+        <p class="label">Simulador</p>
+        <h2 class="h2">Calculá un crédito con las reglas del contrato.</h2>
+      </div>
+      <p class="intro">Mismas fórmulas enteras que <code>lib.rs</code>: el interés se mide en ledgers (17.280 por día), se redondea hacia abajo y la tesorería se calcula por resta, sin polvo perdido.</p>
+    </div>
+    <div class="sim">
+      <form class="sim-in" onsubmit="return false" aria-label="Parámetros del crédito">
+        <div class="field">
+          <div class="field-top"><label for="r-tn">Soja en depósito</label><span class="val"><input id="n-tn" type="number" inputmode="numeric" min="10" max="3000" step="10" aria-label="Toneladas"><span>t</span></span></div>
+          <input id="r-tn" type="range" min="10" max="3000" step="10" value="500">
+        </div>
+        <div class="field">
+          <div class="field-top"><label for="r-px">Precio de la soja</label><span class="val"><span>USD</span><input id="n-px" type="number" inputmode="numeric" min="200" max="600" step="1" aria-label="Precio en USD por tonelada"><span>/t</span></span></div>
+          <input id="r-px" type="range" min="200" max="600" step="1" value="380">
+          <p class="hint">On-chain lo provee Pyth Pro. Bajalo para ver cuándo un crédito queda liquidable.</p>
+        </div>
+        <div class="field">
+          <div class="field-top"><label for="r-pr">Monto a pedir</label><span class="val"><input id="n-pr" type="number" inputmode="numeric" min="1000" max="800000" step="1000" aria-label="Monto en USDC"><span>USDC</span></span></div>
+          <input id="r-pr" type="range" min="1000" max="800000" step="1000" value="120000">
+        </div>
+        <div class="field">
+          <div class="field-top"><label for="r-dy">Plazo</label><span class="val"><input id="n-dy" type="number" inputmode="numeric" min="7" max="365" step="1" aria-label="Plazo en días"><span>días</span></span></div>
+          <input id="r-dy" type="range" min="7" max="365" step="1" value="180">
+          <p class="hint">Se convierte en <code>expiry_ledger</code>. El interés se fija sobre el plazo pactado.</p>
+        </div>
+      </form>
+      <div class="sim-out" aria-live="polite">
+        <div class="verdict"><h3 id="v-title">El contrato origina el crédito</h3><span class="tag" id="v-tag">LoanOriginated</span></div>
+        <div class="out-grid">
+          <div><span>Valor del colateral</span><b id="k-val" class="num">USD 190.000</b></div>
+          <div><span>Cobertura</span><b id="k-cov" class="num">158,3%</b></div>
+          <div><span>Máximo prestable</span><b id="k-max" class="num">146.153,84</b></div>
+          <div><span>Liquidable bajo</span><b id="k-liq" class="num">USD 312/t</b></div>
+        </div>
+        <div class="ltv">
+          <div class="ltv-top"><span>Préstamo sobre colateral (LTV)</span><b id="g-txt">63,2% de 76,9% máx.</b></div>
+          <div class="ltv-bar" role="img" id="g-bar" aria-label="LTV"><div class="ltv-fill" id="g-fill" style="width:63.2%"></div><div class="ltv-max" style="left:76.92%"></div></div>
+        </div>
+        <div class="repay">
+          <h4 id="p-title">Repago a 180 días (3.110.400 ledgers)</h4>
+          <dl>
+            <div><dt>Al pool: capital + 12% TNA</dt><dd id="p-pool">127.101,37</dd></div>
+            <div><dt>A tesorería: spread 6%</dt><dd id="p-tre">3.550,68</dd></div>
+            <div><dt>Total que paga el productor</dt><dd id="p-tot">130.652,05</dd></div>
+          </dl>
+        </div>
+        <p class="note" id="note">Repagar antes no reduce el interés: el productor conoce el monto exacto desde el día uno.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="sec" id="split">
+  <div class="wrap">
+    <div class="split" style="align-items:end">
+      <div>
+        <p class="label">Split atómico</p>
+        <h2 class="h2">Un repago, dos destinos, sin letra chica.</h2>
+      </div>
+      <p class="intro">El spread no se esconde en la tasa: sale separado en la misma transacción. Ejemplo con 10.000 USDC a 365 días, el caso del test <code>full_cycle_atomic_split_and_yield</code>.</p>
+    </div>
+    <div class="flow" aria-label="El productor paga 11.800 USDC: 10.000 de capital y 1.200 de interés van al pool, 600 van a tesorería">
+      <div class="flow-bar"><div class="a">Capital · 10.000</div><div class="b">Pool · 1.200</div><div class="c">600</div></div>
+      <div class="flow-legend">
+        <div><b>10.000 USDC de capital</b>Vuelve al pool y queda libre para nuevos créditos.</div>
+        <div><b>1.200 al pool</b>12% TNA.</div>
+        <div><b>600 a tesorería</b>Spread 6%.</div>
+      </div>
+    </div>
+    <div class="facts">
+      <div><h3>Todo o nada</h3><p>Las dos transferencias salen de la billetera del productor en una sola transacción. Si una falla, se revierte todo.</p></div>
+      <div><h3>Rendimiento real</h3><p>El pool reparte solo interés efectivamente repagado, con un acumulador por share. No se promete nada por adelantado.</p></div>
+      <div><h3>El mismo número en todas las capas</h3><p>Contrato, dashboard y Supabase dan 1.800, 11.200 y 600 para el mismo caso.</p></div>
+    </div>
+  </div>
+</section>
+
+<section class="sec" id="roles">
+  <div class="wrap">
+    <p class="label">Para quién</p>
+    <h2 class="h2">Tres roles, un mismo contrato.</h2>
+    <div class="roles">
+      <div class="role"><h3>Productor</h3><p class="who">Financia la campaña sin malvender la cosecha.</p>
+        <ul><li>Pide USDC contra su eWarrant, con 130% de cobertura.</li><li>Sabe cuánto va a repagar desde el día de originación.</li><li>Al repagar, el hash se libera y el eWarrant vuelve a estar disponible.</li></ul></div>
+      <div class="role"><h3>Inversor</h3><p class="who">Fondea crédito real de la economía agrícola.</p>
+        <ul><li>Deposita USDC en el pool: 1 USDC equivale a 1 share.</li><li>Cobra el 12% TNA de los intereses repagados.</li><li>Retira el capital que no esté prestado.</li></ul></div>
+      <div class="role"><h3>Keeper</h3><p class="who">Vigila precios y vencimientos.</p>
+        <ul><li>Liquida sin permisos si el crédito vence o cae bajo 130%.</li><li>Un crédito vencido se liquida sin consultar el oráculo.</li><li>Si el crédito está sano, el contrato responde NotLiquidatable.</li></ul></div>
+    </div>
+  </div>
+</section>
+
+<section class="sec" id="seguridad">
+  <div class="wrap">
+    <p class="label">Seguridad</p>
+    <h2 class="h2">Lo que el contrato valida, y lo que todavía falta.</h2>
+    <div class="sec-tables">
+      <div>
+        <h3>Controles en el contrato</h3>
+        <div class="tblwrap"><table class="tbl ctl">
+          <tbody>
+            <tr><td>Precio verificado</td><td>Firma ECDSA validada por el contrato de Pyth, feed correcto, precio mayor a 0.</td><td>#15 #16</td></tr>
+            <tr><td>Precio fresco</td><td>Antigüedad de hasta 60 s y nada con fecha futura.</td><td>#14 #20</td></tr>
+            <tr><td>Sin doble pignoración</td><td>Cada hash queda bloqueado mientras el crédito esté activo.</td><td>#8</td></tr>
+            <tr><td>Cobertura mínima</td><td>Valor del colateral de al menos 130% del préstamo.</td><td>#10</td></tr>
+            <tr><td>Aritmética segura</td><td><code>checked_mul</code> y <code>checked_pow</code> en todo el cálculo.</td><td>#12</td></tr>
+            <tr><td>Estado antes que fondos</td><td>El contrato actualiza el estado antes de mover USDC.</td><td>CEI</td></tr>
+          </tbody>
+        </table></div>
+      </div>
+      <div>
+        <h3>Riesgos abiertos</h3>
+        <div class="tblwrap"><table class="tbl risk">
+          <tbody>
+            <tr><td>Adaptador de Pyth simplificado<small>Migrar al cliente oficial de Pyth Lazer.</small></td><td><span class="sev hi">Alta</span></td></tr>
+            <tr><td>Captura del rendimiento antes de un repago<small>Devengo continuo por ledger o ventana de entrada.</small></td><td><span class="sev hi">Alta</span></td></tr>
+            <tr><td>Sin fondo de reserva ante defaults<small>Alimentarlo con una parte del spread.</small></td><td><span class="sev hi">Alta</span></td></tr>
+            <tr><td>Admin único, sin pausa ni rotación<small>Multisig y función de pausa.</small></td><td><span class="sev md">Media</span></td></tr>
+          </tbody>
+        </table></div>
+        <p class="note">Según la auditoría interna del repositorio. No reemplaza una auditoría externa.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="sec" id="legal">
+  <div class="wrap">
+    <p class="label">Marco legal</p>
+    <h2 class="h2">Un warrant de 1914, emitido en formato digital.</h2>
+    <div class="legal">
+      <div class="law"><div class="yr">1914</div><h3>Ley 9.643</h3><p>Régimen de warrants y certificados de depósito. Define cómo se ejecuta el grano ante la mora.</p></div>
+      <div class="law"><div class="yr">2023</div><h3>DNU 70/2023</h3><p>Moderniza la Ley 9.643.</p></div>
+      <div class="law key"><div class="yr">2024</div><h3>Decreto 640/2024</h3><p>Warrants de libre emisión, con emisión y negociación electrónica en plataformas públicas o privadas.</p></div>
+    </div>
+    <p class="caveat">El hash on-chain prueba integridad y unicidad, pero no reemplaza la validez jurídica del documento. El grano sigue necesitando un depositario, y la captación de fondos del público puede quedar alcanzada por la CNV y la UIF.</p>
+  </div>
+</section>
+
+<section class="sec" id="demo">
+  <div class="wrap demo">
+    <div>
+      <p class="label">Demo</p>
+      <h2 class="h2" style="font-size:clamp(38px,4vw,54px)">Probá el ciclo completo en Testnet.</h2>
+      <ol>
+        <li><span><b>Inversor.</b> Depositá USDC en el pool real.</span></li>
+        <li><span><b>Productor.</b> Pedí un crédito: el admin cofirma y el oráculo firma el precio.</span></li>
+        <li><span><b>Keeper.</b> Simulá una caída de la soja y liquidá on-chain.</span></li>
+      </ol>
+      <a class="btn dark" href="/app">Abrir la app en Testnet</a>
+      <p class="note">Con "Billetera de demo" la app crea una cuenta de prueba, la fondea y te da USDC de prueba. También funciona con Freighter, xBull o Albedo. Sin conexión, usá el <a href="/demo">prototipo simulado</a>.</p>
+    </div>
+    <div class="video"><video controls preload="metadata" playsinline src="/assets/agrobank-demo.mp4#t=0.5" aria-label="Video del prototipo de AgroBank"></video></div>
+  </div>
+</section>
+
+
+<section class="sec" id="pruebas">
+  <div class="wrap">
+    <div class="split" style="align-items:end">
+      <div>
+        <p class="label">Pruebas</p>
+        <h2 class="h2">Cada afirmación tiene un test o una transacción.</h2>
+      </div>
+      <p class="intro">Tests unitarios del contrato en Rust, una prueba de punta a punta que recorre la app contra Testnet y las transacciones resultantes, verificables en StellarExpert.</p>
+    </div>
+    <div class="sec-tables" style="margin-top:56px">
+      <div>
+        <h3>Tests del contrato <span class="sev ok-tag">13 OK</span></h3>
+        <div class="tblwrap"><table class="tbl ctl">
+          <tbody>
+            <tr><td>full_cycle_atomic_split_and_yield</td><td>Depósito, crédito, repago 11.200 / 600 y cobro de 1.200.</td><td>agrobank</td></tr>
+            <tr><td>split_matches_18_12_6_for_one_year</td><td>Interés 18/12/6 exacto a 365 días.</td><td>agrobank</td></tr>
+            <tr><td>split_prorates_half_year</td><td>Prorrateo por ledgers a medio año.</td><td>agrobank</td></tr>
+            <tr><td>collateral_ratio_threshold</td><td>Umbral del 130% en aritmética entera.</td><td>agrobank</td></tr>
+            <tr><td>value_with_negative_exponent</td><td>Exponente de Pyth contra 7 decimales de USDC.</td><td>agrobank</td></tr>
+            <tr><td>rejects_undercollateralized_and_over_lent</td><td>Errores #10 y #9.</td><td>agrobank</td></tr>
+            <tr><td>rejects_stale_and_future_prices</td><td>Errores #14 y #20.</td><td>agrobank</td></tr>
+            <tr><td>liquidation_by_price_and_by_expiry</td><td>Liquidación por precio y por vencimiento.</td><td>agrobank</td></tr>
+            <tr><td>initialize_only_once</td><td>Error #18.</td><td>agrobank</td></tr>
+            <tr><td>decodes_signed_update</td><td>Decodifica el update firmado del oráculo.</td><td>verifier</td></tr>
+            <tr><td>rejects_other_signer</td><td>Firma de otra clave: la tx aborta.</td><td>verifier</td></tr>
+            <tr><td>rejects_tampered_price</td><td>Precio alterado después de firmar: aborta.</td><td>verifier</td></tr>
+            <tr><td>initialize_only_once</td><td>El verificador no se reinicializa.</td><td>verifier</td></tr>
+          </tbody>
+        </table></div>
+      </div>
+      <div>
+        <h3>Ciclo completo en Testnet</h3>
+        <div class="tblwrap"><table class="tbl risk" id="proof-table">
+          <tbody><tr><td>Cargando las transacciones de la última corrida…</td><td></td></tr></tbody>
+        </table></div>
+        <p class="note" id="proof-meta">Prueba E2E con Playwright: <code>e2e/testnet-cycle.mjs</code>.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="sec" id="roadmap">
+  <div class="wrap">
+    <div class="split" style="align-items:end">
+      <div>
+        <p class="label">Roadmap</p>
+        <h2 class="h2">Del Testnet al primer ciclo de campaña.</h2>
+      </div>
+      <p class="intro">Cada fase tiene un criterio de salida verificable. En paralelo: dictamen legal y convenios con depositarios y acopios.</p>
+    </div>
+    <div class="tblwrap" style="margin-top:56px"><table class="tbl road" style="min-width:640px">
+      <thead><tr><th>Fase</th><th>Entregable</th><th>Alcance</th><th>Criterio de salida</th></tr></thead>
+      <tbody>
+        <tr class="now"><td>Hoy</td><td>MVP en Testnet</td><td>Contrato y verificador desplegados, app con cofirma del admin, oráculo firmado y faucet.</td><td>Ciclo completo firmado en Testnet.</td></tr>
+        <tr><td>Fase 1</td><td>Oráculo real</td><td>Reemplazar el verificador de Testnet por Pyth Lazer con feed de soja.</td><td>Tests con updates reales.</td></tr>
+        <tr><td>Fase 2</td><td>Economía</td><td>Devengo continuo y fondo de reserva.</td><td>Simulación de utilización y defaults.</td></tr>
+        <tr><td>Fase 3</td><td>Atestación real</td><td>Validación del eWarrant y de Cartas de Porte antes de la cofirma.</td><td>Integración con depositarios.</td></tr>
+        <tr><td>Fase 4</td><td>Indexador</td><td>Eventos de la red volcados a Supabase.</td><td>Reconciliación diaria sin diferencias.</td></tr>
+        <tr><td>Fase 5</td><td>Gobernanza</td><td>Multisig, pausa y vigencia del storage.</td><td>Runbook de operación.</td></tr>
+        <tr><td>Fase 6</td><td>Auditoría externa</td><td>Revisión de seguridad del contrato.</td><td>Hallazgos críticos y altos cerrados.</td></tr>
+        <tr><td>Fase 7</td><td>Piloto</td><td>Mainnet con topes bajos y depositarios reales.</td><td>Primer ciclo de campaña repagado.</td></tr>
+      </tbody>
+    </table></div>
+    <p class="stackline"><span><b>Contrato</b> Rust · soroban-sdk 28</span><span><b>Activo</b> USDC (SAC, 7 decimales)</span><span><b>Oráculo</b> Pyth Pro</span><span><b>Off-chain</b> Supabase con RLS</span><span><b>Web</b> Next.js · Stellar Wallets Kit</span></p>
+  </div>
+</section>
+
+<section class="closing">
+  <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/7/79/CosechaSoja.jpg/1920px-CosechaSoja.jpg" alt="Cosechadora en un lote de soja" loading="lazy">
+  <div class="wrap">
+    <h2>La cosecha ya vale dólares. Que el crédito también.</h2>
+    <p>Recorré el prototipo, leé el contrato y sumate a llevar AgroBank del Testnet al primer piloto.</p>
+    <div class="ctas">
+      <a class="btn light" href="/app">Abrir la app en Testnet</a>
+      <a class="link" href="https://github.com/psyduckLabs/agrobank-protocol" target="_blank" rel="noopener">Ver el código en GitHub</a>
+    </div>
+  </div>
+  <p class="credit">Foto: <a href="https://commons.wikimedia.org/wiki/File:CosechaSoja.jpg" target="_blank" rel="noopener">Clasonsf</a>, CC BY-SA 4.0</p>
+</section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <div class="foot">
+      <div>
+        <a class="logo" href="#top"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 22V9" stroke="#F7F5EF" stroke-width="1.6" stroke-linecap="round" fill="none"/><path d="M12 12c0-4.2 2.7-7 7.5-7.4.2 4.6-2.7 7.4-7.5 7.4z" fill="#7FB08F"/><path d="M12 17c0-3.9-2.5-6.4-7-6.8-.2 4.2 2.5 6.8 7 6.8z" fill="#D9A84A"/></svg>AgroBank</a>
+        <p style="margin-top:14px;max-width:26em">Crédito agrícola on-chain para Argentina. Un proyecto de psyduckLabs.</p>
+      </div>
+      <div><h4>Protocolo</h4><ul><li><a href="/demo">Demo</a></li><li><a href="#simulador">Simulador</a></li><li><a href="#roadmap">Roadmap</a></li></ul></div>
+      <div><h4>Desarrolladores</h4><ul><li><a href="https://github.com/psyduckLabs/agrobank-protocol" target="_blank" rel="noopener">GitHub</a></li><li><a href="https://github.com/psyduckLabs/agrobank-protocol/blob/main/docs/architecture_and_tokenomics.md" target="_blank" rel="noopener">Arquitectura</a></li><li><a href="https://github.com/psyduckLabs/agrobank-protocol/blob/main/docs/testnet_cli_guide.md" target="_blank" rel="noopener">Guía de Testnet</a></li></ul></div>
+      <div><h4>Legal</h4><ul><li><a href="https://github.com/psyduckLabs/agrobank-protocol/blob/main/docs/oracle_and_legal_framework.md" target="_blank" rel="noopener">Marco legal</a></li><li><a href="https://github.com/psyduckLabs/agrobank-protocol/blob/main/docs/audit_and_roadmap.md" target="_blank" rel="noopener">Auditoría interna</a></li><li><a href="https://github.com/psyduckLabs/agrobank-protocol/blob/main/LICENSE" target="_blank" rel="noopener">Licencia MIT</a></li></ul></div>
+    </div>
+    <div class="legalese">
+      <p>© 2026 psyduckLabs. Software experimental sin auditoría externa, desplegado solo en Testnet. Nada de lo que aparece en este sitio es una oferta de inversión ni asesoramiento legal o financiero.</p>
+      <p>Fotos de Wikimedia Commons: Alfonso (CC BY-SA 3.0), Darliton (CC BY-SA 3.0), Clasonsf (CC BY-SA 4.0).</p>
+    </div>
+  </div>
+</footer>
+
+<script>
+(() => {
+  // Espejo de lib.rs: i128 → BigInt, USDC con 7 decimales
+  const DAY = 17280n, LEDGERS_PER_YEAR = 365n * DAY, BPS = 10000n;
+  const toU = x => BigInt(Math.round(x * 1e7));
+  const fromU = u => Number(u) / 1e7;
+  const interestFor = (pU, bps, term) => pU * BigInt(bps) * term / (BPS * LEDGERS_PER_YEAR);
+  const nf = d => new Intl.NumberFormat('es-AR', { minimumFractionDigits: d, maximumFractionDigits: d });
+  const f0 = nf(0), f1 = nf(1), f2 = nf(2);
+  const $ = id => document.getElementById(id);
+  const fields = { tn: [10, 3000], px: [200, 600], pr: [1000, 800000], dy: [7, 365] };
+  const state = { tn: 500, px: 380, pr: 120000, dy: 180 };
+  const paint = r => r.style.setProperty('--p', ((r.value - r.min) / (r.max - r.min) * 100) + '%');
+
+  function render() {
+    const { tn, px, pr, dy } = state;
+    const value = tn * px, term = BigInt(dy) * DAY, pU = toU(pr);
+    const total = interestFor(pU, 1800, term), inv = interestFor(pU, 1200, term), spread = total - inv;
+    const ok = toU(value) * BPS >= pU * 13000n;           // meets_collateral_ratio()
+    const cov = value / pr, ltv = pr / value, max = Math.floor(value / 1.3 * 100) / 100, liq = Math.ceil(pr * 1.3 / tn);
+    $('k-val').textContent = 'USD ' + f0.format(value);
+    $('k-cov').textContent = f1.format(cov * 100) + '%';
+    $('k-cov').style.color = ok ? '' : 'var(--bad)';
+    $('k-max').textContent = f2.format(max);
+    $('k-liq').textContent = 'USD ' + f0.format(liq) + '/t';
+    $('g-txt').textContent = f1.format(ltv * 100) + '% de 76,9% máx.';
+    $('g-fill').style.width = Math.min(ltv * 100, 100) + '%';
+    $('g-fill').style.background = ok ? '' : 'var(--bad)';
+    $('g-bar').setAttribute('aria-label', 'LTV ' + f1.format(ltv * 100) + '%, máximo 76,9%');
+    $('p-title').textContent = `Repago a ${dy} días (${f0.format(Number(term))} ledgers)`;
+    $('p-pool').textContent = f2.format(pr + fromU(inv));
+    $('p-tre').textContent = f2.format(fromU(spread));
+    $('p-tot').textContent = f2.format(pr + fromU(total));
+    const tag = $('v-tag');
+    if (ok) {
+      $('v-title').textContent = 'El contrato origina el crédito';
+      tag.className = 'tag'; tag.textContent = 'LoanOriginated';
+      $('note').textContent = px < liq * 1.08
+        ? `Margen chico: la soja está apenas ${f1.format((px / liq - 1) * 100)}% por encima del precio de liquidación.`
+        : 'Repagar antes no reduce el interés: el productor conoce el monto exacto desde el día uno.';
+    } else {
+      $('v-title').textContent = 'El contrato rechaza la operación';
+      tag.className = 'tag bad'; tag.textContent = 'Undercollateralized #10';
+      $('note').textContent = `Con ${f0.format(tn)} t a USD ${f0.format(px)} se pueden pedir hasta ${f2.format(max)} USDC. Bajá el monto o sumá toneladas.`;
+    }
+  }
+  for (const k of Object.keys(fields)) {
+    const r = $('r-' + k), n = $('n-' + k);
+    n.value = r.value = state[k]; paint(r);
+    r.addEventListener('input', () => { state[k] = +r.value; n.value = r.value; paint(r); render(); });
+    n.addEventListener('input', () => {
+      const v = +n.value, [lo, hi] = fields[k];
+      if (!Number.isFinite(v) || v < lo || v > hi) return;
+      state[k] = v; r.value = v; paint(r); render();
+    });
+    n.addEventListener('blur', () => { n.value = state[k]; });
+  }
+  render();
+
+  // En vivo: estado del contrato y pruebas
+  const ex = (k, id) => `https://stellar.expert/explorer/testnet/${k}/${id}`;
+  const short = x => x.length > 20 ? x.slice(0, 8) + '…' + x.slice(-6) : x;
+  const link = (el, k, id) => { const a = $(el); if (!id) return; a.href = ex(k, id); a.textContent = id; };
+  fetch('/api/status').then(r => r.ok ? r.json() : Promise.reject()).then(s => {
+    const pool = +s.pool.shares, lent = +s.pool.lent;
+    $('lv-pool').textContent = f0.format(pool);
+    $('lv-lent').textContent = f0.format(lent);
+    $('lv-util').textContent = `utilización ${f1.format(pool ? lent / pool * 100 : 0)}%`;
+    $('lv-loans').textContent = f0.format(s.loans);
+    $('lv-split').textContent = `${s.byStatus.Active} activos · ${s.byStatus.Repaid} repagados · ${s.byStatus.Defaulted} liquidados`;
+    $('lv-ledger').textContent = f0.format(s.ledger);
+    $('lv-at').textContent = 'leído a las ' + new Date(s.at).toLocaleTimeString('es-AR');
+    link('lv-c', 'contract', s.contract); link('lv-v', 'contract', s.verifier); link('lv-u', 'contract', s.usdc); link('lv-t', 'account', s.treasury);
+  }).catch(() => { $('lv-err').hidden = false; });
+  fetch('/proofs.json').then(r => r.ok ? r.json() : Promise.reject()).then(p => {
+    const tb = document.querySelector('#proof-table tbody');
+    tb.innerHTML = '';
+    for (const t of p.txs) {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `<td>${t.label}<small>${t.detail || ''}</small></td><td><a target="_blank" rel="noopener" href="${ex('tx', t.hash)}">${short(t.hash)}</a></td>`;
+      tb.appendChild(tr);
+    }
+    $('proof-meta').innerHTML = `Corrida del ${new Date(p.at).toLocaleString('es-AR')} con Playwright (<code>e2e/testnet-cycle.mjs</code>).`;
+  }).catch(() => {});
+})();
+</script>
+</body>
+</html>
