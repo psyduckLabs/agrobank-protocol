@@ -161,3 +161,8 @@ h1, h2, h3, .disp {
   letter-spacing: -0.005em;
 }
 h2.text-xl, h3.text-lg { font-size: 1.6rem; }
+
+/* evita que un hijo ancho (gráfico, tabla) ensanche la grilla en celular */
+.grid > * {
+  min-width: 0;
+}
