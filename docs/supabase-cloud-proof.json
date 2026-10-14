@@ -1,0 +1,17 @@
+{
+  "at": "2026-10-14T04:50:00Z",
+  "project": "agrobank (Supabase, región sa-east-1)",
+  "loaded": ["supabase/migrations/20261012040948_init_schema.sql", "supabase/migrations/20261013000000_align_contract_ledgers_bps.sql", "supabase/seed/testnet_snapshot.sql"],
+  "result": {
+    "eventos": 71,
+    "prestamos": 16,
+    "repagados": 8,
+    "liquidados": 7,
+    "precios_auditados": 23,
+    "diferencias_sql_vs_onchain": 0,
+    "total_lent_db": "3600000000000",
+    "total_lent_onchain": "3600000000000",
+    "tablas_con_rls": 8
+  },
+  "ok": true
+}

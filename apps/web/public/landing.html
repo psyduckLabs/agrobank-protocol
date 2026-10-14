@@ -647,7 +647,7 @@ footer{background:var(--ink);color:#B9B6AC;font-size:14px;padding:64px 0 calc(32
         <p class="note" id="proof-meta">Prueba E2E con Playwright: <code>e2e/testnet-cycle.mjs</code>.</p>
         <h3 style="margin-top:48px">Indexador y base off-chain</h3>
         <div class="tblwrap"><table class="tbl risk" id="idx-table"><tbody><tr><td>…</td><td></td></tr></tbody></table></div>
-        <p class="note">El indexador (<code>apps/web/scripts/indexer.ts</code>) vuelca los eventos al esquema de <code>supabase/migrations</code> y reconcilia la base contra el contrato. Probado contra Postgres 16 con <code>scripts/test-indexer.sh</code>.</p>
+        <p class="note">El indexador (<code>apps/web/scripts/indexer.ts</code>) vuelca los eventos al esquema de <code>supabase/migrations</code> y reconcilia la base contra el contrato. Probado contra Postgres 16 con <code>scripts/test-indexer.sh</code> y cargado en un proyecto Supabase real: 71 eventos, 16 préstamos y 0 diferencias entre la fórmula SQL y lo transferido on-chain.</p>
       </div>
     </div>
   </div>
