@@ -22,6 +22,8 @@ import {
   faucetUsdc,
   isBurner,
   requestLoanLive,
+  issueEWarrant,
+  type IssuedWarrant,
   signedPrice,
   connectWallet,
   fundWithFriendbot,
@@ -202,6 +204,9 @@ interface Actions {
   claim: () => void;
   borrow: (b: { tn: number; principal: number; hash: string; days: number }) => void;
   repay: (id: number) => void;
+  /** En testnet: el depositario emite un eWarrant firmado y devuelve su hash. */
+  issueWarrant: (tn: number) => Promise<string | null>;
+  warrant: IssuedWarrant | null;
 }
 
 function Investor({ v, a }: { v: View; a: Actions }) {
@@ -340,7 +345,18 @@ function Producer({ v, a, price }: { v: View; a: Actions; price: number }) {
             <label className="text-sm font-medium" htmlFor="hs">Hash SHA-256 del eWarrant [Decreto 640/2024]</label>
             <div className="flex gap-2 mt-1">
               <input id="hs" className="inp mono" style={{ fontSize: ".8rem" }} placeholder="64 caracteres hexadecimales" value={hash} onChange={(e) => setHash(e.target.value)} />
-              <button className="btn btn2 text-sm" style={{ whiteSpace: "nowrap" }} onClick={() => setHash(randHex())}>Hash de prueba</button>
+              <button
+                className="btn btn2 text-sm"
+                style={{ whiteSpace: "nowrap" }}
+                disabled={a.busy}
+                onClick={async () => {
+                  if (!v.live) return setHash(randHex());
+                  const h = await a.issueWarrant(Math.round(t));
+                  if (h) setHash(h);
+                }}
+              >
+                {v.live ? "Emitir eWarrant" : "Hash de prueba"}
+              </button>
             </div>
           </div>
           <div>
@@ -348,6 +364,13 @@ function Producer({ v, a, price }: { v: View; a: Actions; price: number }) {
             <input id="dy" className="inp mono mt-1" inputMode="numeric" value={days} onChange={(e) => setDays(e.target.value)} />
             <p className="mute text-xs mt-1">Se convierte en <code>expiry_ledger</code> (≈ 17.280 ledgers/día).</p>
           </div>
+          {v.live && a.warrant && a.warrant.hash === h && (
+            <div className="sm:col-span-2 text-xs mute" style={{ border: "1px solid var(--line)", borderRadius: 6, padding: ".6rem .8rem" }}>
+              <b style={{ color: "var(--green)" }}>eWarrant {a.warrant.ewarrant.id}</b> · {fmt(a.warrant.ewarrant.toneladas)} t de soja ·{" "}
+              {a.warrant.ewarrant.depositario} · firmado {new Date(a.warrant.ewarrant.emitido).toLocaleString("es-AR")}. El admin verifica esta firma
+              antes de cofirmar.
+            </div>
+          )}
         </div>
         <div className="mt-6">
           <div className="flex justify-between text-sm">
@@ -683,6 +706,7 @@ export default function Dashboard() {
   const [address, setAddress] = useState<string | null>(null);
   const [snap, setSnap] = useState<ChainSnapshot | null>(null);
   const [assetName, setAssetName] = useState<string | null>(null);
+  const [warrant, setWarrant] = useState<IssuedWarrant | null>(null);
   const live = address !== null;
 
   useEffect(() => {
@@ -768,6 +792,23 @@ export default function Dashboard() {
 
   const actions: Actions = {
     busy,
+    warrant,
+    issueWarrant: async (tn) => {
+      if (!address) return null;
+      if (!(tn > 0)) {
+        setToast({ k: "err", m: "Ingresá las toneladas depositadas antes de emitir el eWarrant." });
+        return null;
+      }
+      try {
+        const w = await issueEWarrant(address, tn);
+        setWarrant(w);
+        setToast({ k: "ok", m: `eWarrant ${w.ewarrant.id} emitido por el depositario: ${fmt(tn)} t de soja.` });
+        return w.hash;
+      } catch (e) {
+        setToast({ k: "err", m: (e as Error).message });
+        return null;
+      }
+    },
     fail: (m) => setToast({ k: "err", m }),
     deposit: (amt) => {
       if (live) return void runLive("deposit_liquidity", { investor: address, amount: toU(amt) });
@@ -803,7 +844,7 @@ export default function Dashboard() {
       if (live && address) {
         setBusy(true);
         setToast({ k: "info", m: "El admin valida y cofirma; después firmá request_loan en tu billetera…" });
-        requestLoanLive(address, { principal, tonnes: tn, days, hash })
+        requestLoanLive(address, { principal, tonnes: tn, days, hash, ewarrant: warrant && warrant.hash === hash ? { ewarrant: warrant.ewarrant, signature: warrant.signature } : undefined })
           .then(async (r) => {
             setTxs((t) => [{ fn: "request_loan", hash: r.hash, at: new Date().toLocaleTimeString("es-AR") }, ...t].slice(0, 8));
             setToast({ k: "ok", m: `request_loan() confirmada · préstamo #${r.loanId ?? "?"} a USD ${r.priceUsd}/t · tx ${short(r.hash, 8, 6)}`, href: explorer.tx(r.hash) });

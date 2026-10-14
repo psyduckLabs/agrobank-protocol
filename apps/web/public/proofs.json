@@ -1,65 +1,66 @@
 {
   "base": "https://agro-bank.vercel.app",
-  "at": "2026-10-14T00:12:45.082Z",
+  "at": "2026-10-14T01:00:59.727Z",
   "steps": [
-    "billetera de demo: Billetera de demo GBR2…JNMG lista: operás contra el contrato real en testnet.Ver en StellarExpert ↗",
-    "deposit_liquidity: deposit_liquidity() confirmada · tx a77e920d…dbcf46Ver en StellarExpert ↗",
-    "request_loan #1: request_loan() confirmada · préstamo #6 a USD 380/t · tx 2ed5ad5f…5262b8Ver en StellarExpert ↗",
-    "repay_loan: repay_loan() confirmada · tx 64731234…ac13fbVer en StellarExpert ↗",
-    "claim_yield: claim_yield() confirmada · tx c65bb0d3…6f074aVer en StellarExpert ↗",
-    "request_loan #2: request_loan() confirmada · préstamo #7 a USD 380/t · tx ab8ff745…f97666Ver en StellarExpert ↗",
-    "liquidate_collateral: liquidate_collateral() confirmada · tx 2e68db32…969e6aVer en StellarExpert ↗"
+    "billetera de demo: Billetera de demo GD7A…VMYX lista: operás contra el contrato real en testnet.Ver en StellarExpert ↗",
+    "deposit_liquidity: deposit_liquidity() confirmada · tx df14556c…6c84a4Ver en StellarExpert ↗",
+    "request_loan #1: request_loan() confirmada · préstamo #10 a USD 380/t · tx 50dcfddc…708d79Ver en StellarExpert ↗",
+    "repay_loan: repay_loan() confirmada · tx 55a76897…bd4f54Ver en StellarExpert ↗",
+    "claim_yield: claim_yield() confirmada · tx 8d8d3997…2b1412Ver en StellarExpert ↗",
+    "atestación: hash sin certificado rechazado (400: Falta el certificado del eWarrant firmado por el depositario.)",
+    "request_loan #2: request_loan() confirmada · préstamo #11 a USD 380/t · tx c28d8f40…8ae38bVer en StellarExpert ↗",
+    "liquidate_collateral: liquidate_collateral() confirmada · tx 5788195d…b5ab15Ver en StellarExpert ↗"
   ],
   "txs": [
     {
       "label": "deposit_liquidity",
       "detail": "El inversor deposita 1.000 USDC en el pool.",
-      "hash": "a77e920d0c7ee4861fe919ea755754b3e7abfeab27f7e0c34bac6e5545dbcf46"
+      "hash": "df14556cf6ee65c83760b84ccc2fd1a931decb15ff8e45849ecea6b7d76c84a4"
     },
     {
       "label": "request_loan #1",
       "detail": "500 t a USD 380/t, 50.000 USDC a 180 días. Admin cofirma, el oráculo firma el precio.",
-      "hash": "2ed5ad5f5c4fe1d39faf9f4dd6065b51577dd049c988cf3a294b0cb7965262b8"
+      "hash": "50dcfddc51f6b979d49777a673471c36f2c4dfbb816fd05d64b35fa180708d79"
     },
     {
       "label": "repay_loan",
       "detail": "Split atómico: capital + 12% al pool y 6% a tesorería.",
-      "hash": "6473123407a488c38d1b4d089aeb98c3c2b2cabf5f5969d87d9a9c7b6eac13fb"
+      "hash": "55a768977821e52576ff04fc8e58a7661ec593e81af0ed719e2b00f490bd4f54"
     },
     {
       "label": "claim_yield",
       "detail": "El inversor cobra el rendimiento generado por el repago.",
-      "hash": "c65bb0d3bb7c0caf8308d89cf01749b0be27572a6ab2e541c6dc6b2d416f074a"
+      "hash": "8d8d3997496df026a8b5340f7bc6f356603db850c5b5a5e54f1ab353ae2b1412"
     },
     {
       "label": "request_loan #2",
       "detail": "160 t, 45.000 USDC: cobertura del 135%.",
-      "hash": "ab8ff745efe69295c1c477932e1a60c2455c2bfe18bfac3b5412a42541f97666"
+      "hash": "c28d8f400a4f3a728f9c48c7a422bf747be2d652e897fd8977530628298ae38b"
     },
     {
       "label": "liquidate_collateral",
       "detail": "La soja cae a USD 250/t: el keeper liquida con un precio firmado.",
-      "hash": "2e68db3244da0eb7c69089dfc3026246eb99b0766ca7ca01a77222a101969e6a"
+      "hash": "5788195dd2e8c927ba7b5d14380ff3bbbe71d4822718b82738b8babb43b5ab15"
     }
   ],
   "allTxLinks": [
-    "https://stellar.expert/explorer/testnet/tx/2e68db3244da0eb7c69089dfc3026246eb99b0766ca7ca01a77222a101969e6a",
-    "https://stellar.expert/explorer/testnet/tx/ab8ff745efe69295c1c477932e1a60c2455c2bfe18bfac3b5412a42541f97666",
-    "https://stellar.expert/explorer/testnet/tx/c65bb0d3bb7c0caf8308d89cf01749b0be27572a6ab2e541c6dc6b2d416f074a",
-    "https://stellar.expert/explorer/testnet/tx/6473123407a488c38d1b4d089aeb98c3c2b2cabf5f5969d87d9a9c7b6eac13fb",
-    "https://stellar.expert/explorer/testnet/tx/2ed5ad5f5c4fe1d39faf9f4dd6065b51577dd049c988cf3a294b0cb7965262b8",
-    "https://stellar.expert/explorer/testnet/tx/a77e920d0c7ee4861fe919ea755754b3e7abfeab27f7e0c34bac6e5545dbcf46",
-    "https://stellar.expert/explorer/testnet/tx/c6ec81f16dc82f5789da1f12a15b39bea5cf363610362a873a12f21a34e0e08f",
-    "https://stellar.expert/explorer/testnet/tx/b520401dcf2e7190262407460778daddbb67919648dd37b8e05546750608f635"
+    "https://stellar.expert/explorer/testnet/tx/5788195dd2e8c927ba7b5d14380ff3bbbe71d4822718b82738b8babb43b5ab15",
+    "https://stellar.expert/explorer/testnet/tx/c28d8f400a4f3a728f9c48c7a422bf747be2d652e897fd8977530628298ae38b",
+    "https://stellar.expert/explorer/testnet/tx/8d8d3997496df026a8b5340f7bc6f356603db850c5b5a5e54f1ab353ae2b1412",
+    "https://stellar.expert/explorer/testnet/tx/55a768977821e52576ff04fc8e58a7661ec593e81af0ed719e2b00f490bd4f54",
+    "https://stellar.expert/explorer/testnet/tx/50dcfddc51f6b979d49777a673471c36f2c4dfbb816fd05d64b35fa180708d79",
+    "https://stellar.expert/explorer/testnet/tx/df14556cf6ee65c83760b84ccc2fd1a931decb15ff8e45849ecea6b7d76c84a4",
+    "https://stellar.expert/explorer/testnet/tx/ab4912c1a72d24db8095476e7fdcd5fec94a085dc2c17c06d8b364491c62d226",
+    "https://stellar.expert/explorer/testnet/tx/a8774d06f67504242261f4eb8534c5b27b1305bccf589059f5107c407f78e60e"
   ],
   "rows": [
-    "liquidate_collateral() 2e68db32…969e6a · 09:12:43Ver en StellarExpert ↗",
-    "request_loan() ab8ff745…f97666 · 09:12:34Ver en StellarExpert ↗",
-    "claim_yield() c65bb0d3…6f074a · 09:12:28Ver en StellarExpert ↗",
-    "repay_loan() 64731234…ac13fb · 09:12:22Ver en StellarExpert ↗",
-    "request_loan() 2ed5ad5f…5262b8 · 09:12:14Ver en StellarExpert ↗",
-    "deposit_liquidity() a77e920d…dbcf46 · 09:12:03Ver en StellarExpert ↗",
-    "faucet_usdc() c6ec81f1…e0e08f · 09:11:53Ver en StellarExpert ↗",
-    "change_trust() b520401d…08f635 · 09:11:43Ver en StellarExpert ↗"
+    "liquidate_collateral() 5788195d…b5ab15 · 10:00:57Ver en StellarExpert ↗",
+    "request_loan() c28d8f40…8ae38b · 10:00:52Ver en StellarExpert ↗",
+    "claim_yield() 8d8d3997…2b1412 · 10:00:42Ver en StellarExpert ↗",
+    "repay_loan() 55a76897…bd4f54 · 10:00:38Ver en StellarExpert ↗",
+    "request_loan() 50dcfddc…708d79 · 10:00:28Ver en StellarExpert ↗",
+    "deposit_liquidity() df14556c…6c84a4 · 10:00:23Ver en StellarExpert ↗",
+    "faucet_usdc() ab4912c1…62d226 · 10:00:12Ver en StellarExpert ↗",
+    "change_trust() a8774d06…78e60e · 10:00:03Ver en StellarExpert ↗"
   ]
 }

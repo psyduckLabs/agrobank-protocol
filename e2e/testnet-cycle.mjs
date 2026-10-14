@@ -76,7 +76,8 @@ await tab("Productor (eWarrants)");
 await page.locator("#tn").fill("500");
 await page.locator("#pr").fill("50000");
 await page.locator("#dy").fill("180");
-await page.getByRole("button", { name: "Hash de prueba" }).click();
+await page.getByRole("button", { name: /Emitir eWarrant|Hash de prueba/ }).click();
+await page.waitForFunction(() => /emitido por el depositario/.test(document.querySelector('div[role="status"]')?.textContent || ""), null, { timeout: 30_000 });
 await page.getByRole("button", { name: "Solicitar crédito", exact: true }).click();
 await waitOk("request_loan #1");
 await page.waitForTimeout(2000);
@@ -92,11 +93,25 @@ await page.waitForTimeout(1500);
 await page.getByRole("button", { name: /Cobrar rendimiento/ }).click();
 await waitOk("claim_yield");
 
+// 6b. Atestación: un hash sin certificado del depositario tiene que ser rechazado por el admin
+{
+  const farmer = await page.evaluate(() => localStorage.getItem("agrobank:testnet-burner") ? document.body.innerText.match(/G[A-Z2-7]{3}…[A-Z2-7]{4}/)?.[0] : null);
+  const r = await page.evaluate(async () => {
+    const res = await fetch("/api/loan", { method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ farmer: "GBY3JA2QJWM37QM4OJZ4NGMNDMFFTI7CVAHKNOFC4J3BJB7OG3PPAWLG", principal: 1000, tonnes: 10, days: 30, hash: "ab".repeat(32) }) });
+    return { status: res.status, body: await res.json() };
+  });
+  if (r.status !== 400 || !/certificado/.test(r.body.error)) throw new Error("la atestación no rechazó un eWarrant sin certificado: " + JSON.stringify(r));
+  step(`atestación: hash sin certificado rechazado (${r.status}: ${r.body.error})`);
+  void farmer;
+}
+
 // 6. Segundo crédito cerca del límite y liquidación por caída de precio
 await tab("Productor (eWarrants)");
 await page.locator("#tn").fill("160");
 await page.locator("#pr").fill("45000");
-await page.getByRole("button", { name: "Hash de prueba" }).click();
+await page.getByRole("button", { name: /Emitir eWarrant|Hash de prueba/ }).click();
+await page.waitForFunction(() => /emitido por el depositario/.test(document.querySelector('div[role="status"]')?.textContent || ""), null, { timeout: 30_000 });
 await page.getByRole("button", { name: "Solicitar crédito", exact: true }).click();
 await waitOk("request_loan #2");
 await tab("Keeper / Liquidaciones");

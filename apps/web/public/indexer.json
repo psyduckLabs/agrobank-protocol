@@ -1,18 +1,18 @@
 {
-  "at": "2026-10-14T00:28:02.570Z",
-  "ledger": 5182818,
-  "loans": 8,
-  "repaidChecked": 4,
-  "oracleAudit": 11,
+  "at": "2026-10-14T01:01:47.719Z",
+  "ledger": 5183223,
+  "loans": 12,
+  "repaidChecked": 6,
+  "oracleAudit": 17,
   "events": {
-    "liquidity_deposited": 5,
-    "loan_defaulted": 3,
-    "loan_originated": 8,
-    "loan_repaid": 4,
-    "oracle_price_used": 11,
-    "yield_claimed": 4
+    "liquidity_deposited": 7,
+    "loan_defaulted": 5,
+    "loan_originated": 12,
+    "loan_repaid": 6,
+    "oracle_price_used": 17,
+    "yield_claimed": 6
   },
-  "totalLent": "1800000000000",
+  "totalLent": "2700000000000",
   "differences": [],
   "ok": true
 }

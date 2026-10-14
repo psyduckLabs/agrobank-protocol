@@ -260,7 +260,7 @@ export async function signedPrice(px?: number): Promise<{ bytes: Uint8Array; hex
  */
 export async function requestLoanLive(
   address: string,
-  p: { principal: number; tonnes: number; days: number; hash: string },
+  p: { principal: number; tonnes: number; days: number; hash: string; ewarrant?: unknown },
 ): Promise<{ hash: string; loanId: number | null; priceUsd: number }> {
   const j = await api<{ xdr: string; priceUsd: number }>("/api/loan", {
     method: "POST",
@@ -283,6 +283,16 @@ export async function requestLoanLive(
   }
   return { hash: sent.hash, loanId: null, priceUsd: j.priceUsd };
 }
+
+export interface IssuedWarrant {
+  ewarrant: { id: string; toneladas: number; depositario: string; emitido: string };
+  hash: string;
+  signature: string;
+}
+
+/** El depositario de Testnet emite un eWarrant firmado por las toneladas depositadas. */
+export const issueEWarrant = (farmer: string, toneladas: number) =>
+  api<IssuedWarrant>("/api/ewarrant", { method: "POST", body: JSON.stringify({ farmer, toneladas }) });
 
 // ── Cuenta del usuario en testnet ──────────────────────────────────────
 

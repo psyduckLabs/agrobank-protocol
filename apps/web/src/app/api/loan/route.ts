@@ -1,6 +1,7 @@
 import { Client } from "@agrobank/client";
 import { rpc } from "@agrobank/client";
 import { explainError } from "@/lib/chain";
+import { verify as verifyEWarrant } from "@/lib/ewarrant";
 import {
   CONTRACT_ID,
   DAY_IN_LEDGERS,
@@ -21,7 +22,7 @@ import {
 
 /**
  * Originación con cofirma del admin. El servidor:
- *  1. valida los topes de la demo (atestación off-chain simplificada),
+ *  1. valida los topes y el eWarrant firmado por el depositario (atestación off-chain),
  *  2. firma un update de precio fresco con el oráculo,
  *  3. simula `request_loan` con el productor como fuente,
  *  4. firma la entrada de autorización del admin.
@@ -39,6 +40,9 @@ export async function POST(request: Request) {
     if (!Number.isInteger(tonnes) || tonnes <= 0 || tonnes > MAX_TONNES) throw new HttpError(400, `Las toneladas tienen que ser enteras, entre 1 y ${MAX_TONNES}.`);
     if (!Number.isInteger(days) || days <= 0 || days > MAX_DAYS) throw new HttpError(400, `El plazo va de 1 a ${MAX_DAYS} días.`);
     if (!/^[0-9a-f]{64}$/.test(hash)) throw new HttpError(400, "El hash del eWarrant tiene que ser SHA-256 (64 caracteres hexadecimales).");
+
+    // Atestación: certificado del depositario firmado, a nombre del productor y con toneladas suficientes
+    verifyEWarrant(b.ewarrant, farmer, tonnes, hash);
 
     const latest = await server().getLatestLedger();
     const expiry = latest.sequence + days * DAY_IN_LEDGERS;
