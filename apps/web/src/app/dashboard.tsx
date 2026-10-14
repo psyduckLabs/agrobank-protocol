@@ -25,6 +25,7 @@ import {
   issueEWarrant,
   type IssuedWarrant,
   signedPrice,
+  marketPriceInfo,
   connectWallet,
   fundWithFriendbot,
   usdcAssetName,
@@ -393,7 +394,7 @@ function Producer({ v, a, price }: { v: View; a: Actions; price: number }) {
         </button>
         <p className="mute text-xs mt-2">
           {v.live
-            ? "En testnet, el servidor de AgroBank valida el pedido, firma un precio fresco del oráculo (USD 380/t de referencia) y cofirma como admin. Vos firmás la transacción y el contrato verifica la firma del precio, el 130% y el hash on-chain."
+            ? "En testnet, el servidor de AgroBank verifica el eWarrant firmado por el depositario, firma el precio de mercado de la soja (futuro CBOT) con el oráculo y cofirma como admin. Vos firmás la transacción y el contrato verifica la firma del precio, el 130% y el hash on-chain."
             : "Llama a request_loan (requiere firma del productor y del admin; la demo simula ambas)."}
         </p>
       </div>
@@ -448,12 +449,14 @@ function Producer({ v, a, price }: { v: View; a: Actions; price: number }) {
 function Keeper({
   v,
   price,
+  base,
   setPrice,
   busy,
   liq,
   events,
   liquidate,
 }: {
+  base: number;
   v: View;
   price: number;
   setPrice: (p: number) => void;
@@ -463,14 +466,14 @@ function Keeper({
   liquidate: (id: number) => void;
 }) {
   const risky = v.loans.filter((l) => loanStatus(l, price, v.ledger) === "Liquidable").length;
-  const drop = (price / P_BASE - 1) * 100;
+  const drop = (price / base - 1) * 100;
   const steps = v.live
     ? ["Pedir precio firmado al oráculo", "Firmar liquidate_collateral", "Verificar firma on-chain y confirmar"]
     : ["Obtener payload firmado de Pyth (leEcdsa)", "Simular liquidate_collateral", "Firmar y confirmar en red"];
   return (
     <div className="grid gap-4">
       <div className="grid gap-4 sm:grid-cols-3">
-        <Stat label="Precio Pyth (soja)" value={`USD ${price}/t`} sub={drop === 0 ? "Sin variación" : `${fmt(drop, 1)}% vs. USD ${P_BASE}`} />
+        <Stat label="Precio Pyth (soja)" value={`USD ${price}/t`} sub={drop === 0 ? (v.live ? "Mercado: CBOT (ZS=F)" : "Sin variación") : `${fmt(drop, 1)}% vs. USD ${fmt(base)}`} />
         <Stat label="Créditos en riesgo" value={`${risky} de ${v.loans.filter((l) => l.status === "Active").length}`} sub="Bajo 130% de cobertura o vencidos" />
         <Stat label="Ledger actual" value={fmt(v.ledger)} sub={v.live ? "Soroban testnet" : "Referencia para expiry_ledger"} />
       </div>
@@ -478,14 +481,14 @@ function Keeper({
         <div className="flex items-baseline justify-between flex-wrap gap-2">
           <h2 className="text-xl font-semibold">Simular caída del precio de la soja</h2>
           <div className="flex gap-2">
-            <button className="btn btn2 text-sm" disabled={busy} onClick={() => setPrice(P_BASE)}>Restablecer USD {P_BASE}</button>
+            <button className="btn btn2 text-sm" disabled={busy} onClick={() => setPrice(base)}>Restablecer USD {fmt(base)}</button>
             <button className="btn text-sm" style={{ background: "var(--bad)" }} disabled={busy} onClick={() => setPrice(P_MIN)}>Caer a USD {P_MIN}</button>
           </div>
         </div>
         <div className="flex items-center gap-4 mt-4">
           <span className="mute text-sm mono">USD {P_MIN}</span>
-          <input aria-label="Precio de la soja en USD por tonelada" className="flex-1" type="range" min={P_MIN} max={P_BASE} step="1" value={price} disabled={busy} onChange={(e) => setPrice(+e.target.value)} />
-          <span className="mute text-sm mono">USD {P_BASE}</span>
+          <input aria-label="Precio de la soja en USD por tonelada" className="flex-1" type="range" min={P_MIN} max={base} step="1" value={price} disabled={busy} onChange={(e) => setPrice(+e.target.value)} />
+          <span className="mute text-sm mono">USD {fmt(base)}</span>
           <b className="disp text-2xl mono" style={{ color: drop < 0 ? "var(--bad)" : "var(--ink)" }}>{price}</b>
         </div>
         <p className="mute text-xs mt-2">
@@ -687,6 +690,16 @@ function AccountSetup({
 export default function Dashboard() {
   const [tab, setTab] = useState<"inv" | "prod" | "keep">("inv");
   const [price, setPrice] = useState(P_BASE);
+  const [base, setBase] = useState(P_BASE);
+  /** En testnet el precio de partida es el de mercado que firma el oráculo. */
+  const loadMarket = () =>
+    marketPriceInfo()
+      .then((m) => {
+        const px = Math.round(m.priceUsd);
+        setBase(px);
+        setPrice(px);
+      })
+      .catch(() => undefined);
   const [busy, setBusy] = useState(false);
   const [toast, setToast] = useState<Toast | null>(null);
   const [theme, setTheme] = useState<"light" | "dark" | null>(null);
@@ -936,6 +949,7 @@ export default function Dashboard() {
       setToast({ k: "info", m: "Leyendo el contrato en testnet…" });
       await refresh(addr);
       usdcAssetName().then(setAssetName, () => setAssetName(null));
+      loadMarket();
       setEvents([]);
       setToast({ k: "ok", m: `Conectada ${short(addr)} · operando contra el contrato en testnet.`, href: explorer.contract(CONTRACT_ID) });
     } catch (e) {
@@ -1030,6 +1044,7 @@ export default function Dashboard() {
       }
       setSnap(s);
       usdcAssetName().then(setAssetName, () => setAssetName(null));
+      loadMarket();
       setEvents([]);
       setToast({ k: "ok", m: `Billetera de demo ${short(addr)} lista: operás contra el contrato real en testnet.`, href: explorer.account(addr) });
     } catch (e) {
@@ -1126,7 +1141,7 @@ export default function Dashboard() {
       ) : tab === "prod" ? (
         <Producer v={view} a={actions} price={price} />
       ) : (
-        <Keeper v={view} price={price} setPrice={setPrice} busy={busy} liq={liq} events={events} liquidate={liquidate} />
+        <Keeper v={view} base={base} price={price} setPrice={setPrice} busy={busy} liq={liq} events={events} liquidate={liquidate} />
       )}
       {txs.length > 0 && (
         <div className="card p-5 mt-4">

@@ -254,6 +254,9 @@ export async function signedPrice(px?: number): Promise<{ bytes: Uint8Array; hex
   return { bytes, hex: j.hex, priceUsd: j.priceUsd };
 }
 
+/** Precio de mercado que firma el oráculo (USD/t) y su fuente. */
+export const marketPriceInfo = () => api<{ priceUsd: number; source: string }>("/api/price");
+
 /**
  * request_loan con dos firmas: el servidor valida, firma el precio y cofirma como
  * admin; acá el productor firma el sobre y lo envía. Devuelve hash y loan_id.

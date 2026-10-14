@@ -10,12 +10,12 @@ import {
   MAX_PRINCIPAL_USDC,
   MAX_TONNES,
   NETWORK_PASSPHRASE,
-  REFERENCE_PRICE,
   RPC_URL,
   adminSigner,
   assertAccount,
   fail,
   json,
+  marketPrice,
   server,
   signPriceUpdate,
 } from "@/lib/server";
@@ -46,7 +46,8 @@ export async function POST(request: Request) {
 
     const latest = await server().getLatestLedger();
     const expiry = latest.sequence + days * DAY_IN_LEDGERS;
-    const price = signPriceUpdate(REFERENCE_PRICE);
+    const market = await marketPrice();
+    const price = signPriceUpdate(market.priceUsd);
     const c = new Client({ contractId: CONTRACT_ID, networkPassphrase: NETWORK_PASSPHRASE, rpcUrl: RPC_URL, publicKey: farmer });
     const tx = await c.request_loan(
       {
@@ -64,7 +65,7 @@ export async function POST(request: Request) {
     if (res?.isErr?.()) throw new HttpError(400, res.unwrapErr?.().message ?? "El contrato rechazó la originación.");
 
     await tx.signAuthEntries(adminSigner());
-    return json({ xdr: tx.toXDR(), expiry, priceUsd: price.priceUsd, publishTimeUs: price.publishTimeUs });
+    return json({ xdr: tx.toXDR(), expiry, priceUsd: price.priceUsd, priceSource: market.source, publishTimeUs: price.publishTimeUs });
   } catch (e) {
     return fail(e);
   }

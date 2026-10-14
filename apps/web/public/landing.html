@@ -378,7 +378,7 @@ footer{background:var(--ink);color:#B9B6AC;font-size:14px;padding:64px 0 calc(32
       <div><span>Liquidez del pool</span><b id="lv-pool" class="num">…</b><small>USDC de prueba</small></div>
       <div><span>Prestado a productores</span><b id="lv-lent" class="num">…</b><small id="lv-util">utilización</small></div>
       <div><span>Créditos originados</span><b id="lv-loans" class="num">…</b><small id="lv-split">activos · repagados · liquidados</small></div>
-      <div><span>Ledger actual</span><b id="lv-ledger" class="num">…</b><small id="lv-at">Testnet</small></div>
+      <div><span>Soja que firma el oráculo</span><b id="lv-soy" class="num">…</b><small id="lv-soysrc">por tonelada</small><small id="lv-ledger-wrap">ledger <span id="lv-ledger">…</span> · <span id="lv-at">Testnet</span></small></div>
     </div>
     <div class="tblwrap" style="margin-top:40px"><table class="tbl addr">
       <tbody>
@@ -784,6 +784,7 @@ footer{background:var(--ink);color:#B9B6AC;font-size:14px;padding:64px 0 calc(32
     $('lv-split').textContent = `${s.byStatus.Active} activos · ${s.byStatus.Repaid} repagados · ${s.byStatus.Defaulted} liquidados`;
     $('lv-ledger').textContent = f0.format(s.ledger);
     $('lv-at').textContent = 'leído a las ' + new Date(s.at).toLocaleTimeString('es-AR');
+    if (s.soyPrice) { $('lv-soy').textContent = 'USD ' + f2.format(s.soyPrice); $('lv-soysrc').textContent = s.soySource; }
     link('lv-c', 'contract', s.contract); link('lv-v', 'contract', s.verifier); link('lv-u', 'contract', s.usdc); link('lv-t', 'account', s.treasury);
   }).catch(() => { $('lv-err').hidden = false; });
   const LABEL = { liquidity_deposited: 'Depósito', liquidity_withdrawn: 'Retiro', yield_claimed: 'Cobro de rendimiento', loan_originated: 'Crédito originado', loan_repaid: 'Repago', loan_defaulted: 'Liquidación', oracle_price_used: 'Precio del oráculo' };

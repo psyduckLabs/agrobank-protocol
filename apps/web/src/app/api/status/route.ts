@@ -1,12 +1,12 @@
 import { Client } from "@agrobank/client";
-import { CONTRACT_ID, NETWORK_PASSPHRASE, REFERENCE_PRICE, RPC_URL, VERIFIER_ID, fail, json, server } from "@/lib/server";
+import { CONTRACT_ID, NETWORK_PASSPHRASE, RPC_URL, VERIFIER_ID, fail, json, marketPrice, server } from "@/lib/server";
 
 /** Estado en vivo del protocolo en Testnet, para la landing. */
 export async function GET(request: Request) {
   void request.url; // lectura de la request: se resuelve en cada pedido
   try {
     const c = new Client({ contractId: CONTRACT_ID, networkPassphrase: NETWORK_PASSPHRASE, rpcUrl: RPC_URL });
-    const [latest, stats, cfg] = await Promise.all([server().getLatestLedger(), c.pool_stats(), c.get_config()]);
+    const [latest, stats, cfg, market] = await Promise.all([server().getLatestLedger(), c.pool_stats(), c.get_config(), marketPrice()]);
     const [shares, lent] = stats.result as readonly [bigint, bigint, bigint];
     const counts = { Active: 0, Repaid: 0, Defaulted: 0 } as Record<string, number>;
     let loans = 0;
@@ -38,7 +38,8 @@ export async function GET(request: Request) {
         pool: { shares: (Number(shares) / 1e7).toFixed(2), lent: (Number(lent) / 1e7).toFixed(2) },
         loans,
         byStatus: counts,
-        referencePrice: REFERENCE_PRICE,
+        soyPrice: market.priceUsd,
+        soySource: market.source,
         at: new Date().toISOString(),
       },
       200,
