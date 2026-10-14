@@ -23,6 +23,30 @@ export const FAUCET_USDC = 50_000;
 
 export const DAY_IN_LEDGERS = 17_280;
 
+/** Bushels de soja por tonelada métrica (60 lb por bushel). */
+const BUSHELS_PER_TONNE = 36.7437;
+const MARKET_URL = "https://query1.finance.yahoo.com/v8/finance/chart/ZS=F?range=1d&interval=1d";
+let market: { priceUsd: number; source: string; at: number } | null = null;
+
+/**
+ * Precio de mercado de la soja en USD/t: futuro de CBOT (ZS=F, centavos por bushel).
+ * Cache de 5 minutos; si la fuente falla, usa el precio de referencia configurado.
+ */
+export async function marketPrice(): Promise<{ priceUsd: number; source: string }> {
+  if (market && Date.now() - market.at < 300_000) return market;
+  try {
+    const r = await fetch(MARKET_URL, { headers: { "User-Agent": "Mozilla/5.0" }, cache: "no-store", signal: AbortSignal.timeout(5000) });
+    const j = await r.json();
+    const cents = Number(j?.chart?.result?.[0]?.meta?.regularMarketPrice);
+    const px = Math.round((cents / 100) * BUSHELS_PER_TONNE * 100) / 100;
+    if (Number.isFinite(px) && px > PRICE_MIN && px < PRICE_MAX) {
+      market = { priceUsd: px, source: "CBOT ZS=F vía Yahoo Finance", at: Date.now() };
+      return market;
+    }
+  } catch {}
+  return { priceUsd: REFERENCE_PRICE, source: "precio de referencia (fuente de mercado no disponible)" };
+}
+
 function secret(name: string): Keypair {
   const s = process.env[name];
   if (!s) throw new HttpError(503, `Falta configurar ${name} en el servidor.`);

@@ -19,10 +19,10 @@ page.on("pageerror", (e) => console.log("pageerror", String(e)));
 
 const DETAIL = {
   deposit_liquidity: "El inversor deposita 1.000 USDC en el pool.",
-  "request_loan #1": "500 t a USD 380/t, 50.000 USDC a 180 días. Admin cofirma, el oráculo firma el precio.",
+  "request_loan #1": "500 t con eWarrant del depositario, 50.000 USDC a 180 días. Admin cofirma, el oráculo firma el precio de mercado (CBOT).",
   repay_loan: "Split atómico: capital + 12% al pool y 6% a tesorería.",
   claim_yield: "El inversor cobra el rendimiento generado por el repago.",
-  "request_loan #2": "160 t, 45.000 USDC: cobertura del 135%.",
+  "request_loan #2": "160 t, 45.000 USDC: unos 168% de cobertura al precio de mercado.",
   liquidate_collateral: "La soja cae a USD 250/t: el keeper liquida con un precio firmado.",
 };
 const toast = () => page.locator('div[role="status"]').first();

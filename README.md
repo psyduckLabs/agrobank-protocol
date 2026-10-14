@@ -49,12 +49,12 @@ Corrida E2E del 14/10/2026 contra `https://agro-bank.vercel.app`, con una billet
 
 | Paso | Qué prueba | Transacción |
 |---|---|---|
-| `deposit_liquidity` | El inversor deposita 1.000 USDC en el pool. | [df14556c…6c84a4](https://stellar.expert/explorer/testnet/tx/df14556cf6ee65c83760b84ccc2fd1a931decb15ff8e45849ecea6b7d76c84a4) |
-| `request_loan` | El depositario emite un eWarrant firmado por 500 t; el admin verifica la firma y cofirma; el oráculo firma USD 380/t; el contrato verifica el precio on-chain. 50.000 USDC a 180 días. | [50dcfddc…708d79](https://stellar.expert/explorer/testnet/tx/50dcfddc51f6b979d49777a673471c36f2c4dfbb816fd05d64b35fa180708d79) |
-| `repay_loan` | Split atómico: capital + 12% al pool y 6% a tesorería en la misma transacción. | [55a76897…bd4f54](https://stellar.expert/explorer/testnet/tx/55a768977821e52576ff04fc8e58a7661ec593e81af0ed719e2b00f490bd4f54) |
-| `claim_yield` | El inversor cobra el rendimiento que generó el repago. | [8d8d3997…2b1412](https://stellar.expert/explorer/testnet/tx/8d8d3997496df026a8b5340f7bc6f356603db850c5b5a5e54f1ab353ae2b1412) |
-| `request_loan` | 160 t, 45.000 USDC: cobertura del 135%, cerca del límite. | [c28d8f40…8ae38b](https://stellar.expert/explorer/testnet/tx/c28d8f400a4f3a728f9c48c7a422bf747be2d652e897fd8977530628298ae38b) |
-| `liquidate_collateral` | La soja cae a USD 250/t: el keeper envía un precio firmado y el crédito pasa a `Defaulted`. | [5788195d…b5ab15](https://stellar.expert/explorer/testnet/tx/5788195dd2e8c927ba7b5d14380ff3bbbe71d4822718b82738b8babb43b5ab15) |
+| `deposit_liquidity` | El inversor deposita 1.000 USDC en el pool. | [25f748bb…f624f6](https://stellar.expert/explorer/testnet/tx/25f748bbba08a91dce7ee7ba67bbf1f6922189fd0f28b387a23e54dffff624f6) |
+| `request_loan` | El depositario emite un eWarrant firmado por 500 t; el admin verifica la firma y cofirma; el oráculo firma el precio de mercado (futuro CBOT, ~USD 470/t); el contrato verifica la firma on-chain. 50.000 USDC a 180 días. | [9757e007…626131](https://stellar.expert/explorer/testnet/tx/9757e00765611d2b68aadbf13619c0cf5450b076d3ee07e5b6ef751f5e626131) |
+| `repay_loan` | Split atómico: capital + 12% al pool y 6% a tesorería en la misma transacción. | [6bff658e…5210ce](https://stellar.expert/explorer/testnet/tx/6bff658e0729c6acd1149b3de350e7ab15e42e23f2949373b3cd9fa7bb5210ce) |
+| `claim_yield` | El inversor cobra el rendimiento que generó el repago. | [85cbfc4c…913fee](https://stellar.expert/explorer/testnet/tx/85cbfc4ccc799aabac9417df28ee12af4537dc70160dac7e97729e2db1913fee) |
+| `request_loan` | 160 t, 45.000 USDC: unos 168% de cobertura al precio de mercado. | [ffb96f78…f9ad98](https://stellar.expert/explorer/testnet/tx/ffb96f78639679d39fe9480c01e28c9f53e9b8099499c91d35d1033712f9ad98) |
+| `liquidate_collateral` | La soja cae a USD 250/t: el keeper envía un precio firmado y el crédito pasa a `Defaulted`. | [06585861…13a3c7](https://stellar.expert/explorer/testnet/tx/0658586190600030ef5481c8ce70e8936965e836ea80eceb29b03d524713a3c7) |
 | atestación | Un pedido con un hash sin certificado del depositario: el admin no cofirma (HTTP 400). | sin tx, rechazado antes de firmar |
 
 Detalle completo de la corrida: [`docs/e2e-proofs.json`](docs/e2e-proofs.json).
@@ -122,7 +122,7 @@ Keeper liquida ─► /api/price?px= ──────────────�
 |---|---|---|
 | **Verificador de precios** | `contracts/price-verifier` | Imita el modelo pull de Pyth: recibe `feed_id │ price │ exponent │ publish_time_us` + firma ed25519 y la valida con `env.crypto().ed25519_verify`. Misma interfaz `verify_update(Bytes) -> VerifiedPrice` que espera AgroBank, así que migrar a Pyth Lazer solo cambia la dirección del verificador. |
 | **Cofirma del admin** | `apps/web/src/app/api/loan` | El servidor arma `request_loan`, firma la entrada de autorización del admin (`signAuthEntries`) y devuelve el XDR; el productor firma el sobre con su billetera. Las dos `require_auth` del contrato se cumplen de verdad. |
-| **Oráculo** | `apps/web/src/app/api/price` | Firma updates frescos (menos de 60 s, como exige `read_soy_price`). `?px=` simula un movimiento de mercado para probar liquidaciones. |
+| **Oráculo** | `apps/web/src/app/api/price` | Firma el **precio de mercado de la soja**: futuro de CBOT (ZS=F) convertido a USD/t, con cache de 5 minutos y caída al precio de referencia si la fuente no responde. Updates frescos (menos de 60 s, como exige `read_soy_price`). `?px=` simula un movimiento de mercado para probar liquidaciones. |
 | **Atestación del eWarrant** | `apps/web/src/app/api/ewarrant` · `src/lib/ewarrant.ts` | El depositario de Testnet emite un certificado (productor, grano, toneladas) firmado con ed25519. El hash que se pignora on-chain es el SHA-256 del certificado, y antes de cofirmar el admin verifica la firma, el titular y que las toneladas no superen lo certificado. |
 | **Faucet** | `apps/web/src/app/api/faucet` | El emisor del USDC de prueba envía 50.000 USDC a cuentas con trustline. |
 | **Billetera de demo** | `apps/web/src/lib/chain.ts` | Genera una clave de Testnet en el navegador, la fondea con Friendbot, crea la trustline y pide USDC. Sin extensión. También funcionan Freighter, xBull, Albedo y Lobstr vía Stellar Wallets Kit. |
